@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "MedRem",
+    "icon": "./assets/images/logo.png",
+    "slug": "my-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.myapp",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "remote-notification"],
+        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized notifications.",
+        "UNNotificationCategory": [
+          {
+            "identifier": "med-reminders-category",
+            "actions": [
+              {
+                "identifier": "snooze-action",
+                "title": "Snooze",
+                "options": ["foreground"]
+              },
+              {
+                "identifier": "taken-action",
+                "title": "Taken",
+                "options": ["foreground"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "android": {
+      "googleServicesFile": "./android/app/google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.myapp"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "5ce120c5-eb3c-48ea-8541-4854e2080bd8"
+      }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/5ce120c5-eb3c-48ea-8541-4854e2080bd8"
+    }
+  }
+}
