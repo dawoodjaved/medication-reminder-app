@@ -1,38 +1,58 @@
 # Welcome to the Medication Reminder App 
+This is a mobile app built using **React Native** and **Expo** to help users manage their daily medication. Users can log medicines, get reminder notifications, and track their medication history.
+## Technical Stack
 
-## Get started
+- **Frontend**: React Native, Expo
+- **Backend**: Appwrite
+- **Authentication**: Phone-based OTP
+- **OCR**: MLKit and OCR.space and Expo imgePicker library
+- **Notifications**: Appwrite
+- **Database**: Appwrite Database
 
-1. Install dependencies
+## How to Run the App
+
+**Clone the repo**
+
+**Install dependencies** 
 
    ```bash
    npm install
    ```
+**Start the app**
+```bash
+   npx expo start
+   ```
+It will start the expo 
 
-2. Start the app
+Press s │ switch to Expo Go (for testing the app on mobile device)
+
+**Scan the QR code** using the **Expo Go app** on your Android phone OR using camera on IOS
+Start using the APP
+
+## 📱 Build APK (Optional)
+
+If you want to generate an APK file:
+
+1. Install EAS CLI:
 
    ```bash
-    npx expo start
+   npm install -g eas-cli
    ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go),
-- 
-OR Simply the bar code will be shown on the screen that can be scanned. it will open the app in the Expo on mobile.
-
-
-## Get a fresh project
-
-When you're ready, run:
-
+   
+2. Configure the project:
 ```bash
-npm run reset-project
-```
+   eas build:configure
+   ```
+3. Build the APK:
+```bash
+   eas build -p android --profile preview
+   ```
+```bash
+   eas build -p ios --profile preview
+   ```
+> You will get a download link for the APK from the Expo build service.
+ 
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
 ## Learn more
 
@@ -40,5 +60,4 @@ To learn more about developing your project with Expo, look at the following res
 
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
 

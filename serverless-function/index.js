@@ -18,13 +18,26 @@ module.exports = async function (req, res) {
   let pushResults = [];
 
   try {
-    // Fetch tokens and reminders in parallel
+    const groupA = [
+      sdk.Query.equal("taken", false),
+      sdk.Query.equal("notificationSend", false)
+    ];
+    
+    const groupB = [
+      sdk.Query.equal("repeatSchedule", true),
+      sdk.Query.greaterThan("totalRemindersLeft", 0)
+    ];
+    
+    const remindersQuery = sdk.Query.or([
+      sdk.Query.and(groupA),
+      sdk.Query.and(groupB)
+    ]);
+
     const [tokensRes, remindersRes] = await Promise.all([
       db.listDocuments(databaseId, tokensCol, []),
       db.listDocuments(databaseId, remindersCol, [
-        sdk.Query.equal("taken", false),
-        sdk.Query.equal("notificationSend", false),
-        sdk.Query.limit(100),
+        remindersQuery,
+        sdk.Query.limit(100)
       ]),
     ]);
 

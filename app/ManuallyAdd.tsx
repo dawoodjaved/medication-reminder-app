@@ -29,6 +29,8 @@ type MedicationData = {
   time2?: string;
   time3?: string;
   notes?: string;
+  repeatSchedule: boolean;
+  totalRemindersLeft?: string;
 };
 
 type Errors = Partial<Record<keyof MedicationData, string>>;
@@ -49,14 +51,15 @@ const ManuallyAdd: React.FC = () => {
     time2: '',
     time3: '',
     notes: '',
+    repeatSchedule: false,
+    totalRemindersLeft: '',
   });
   const [errors, setErrors] = useState<Errors>({});
   const [isTime1Visible, setTime1Visible] = useState(false);
   const [isTime2Visible, setTime2Visible] = useState(false);
   const [isTime3Visible, setTime3Visible] = useState(false);
 
-  // useCallback to avoid unnecessary re-renders
-  const handleChange = useCallback((field: keyof MedicationData, value: string) => {
+  const handleChange = useCallback((field: keyof MedicationData, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   }, []);
@@ -69,11 +72,17 @@ const ManuallyAdd: React.FC = () => {
     if (!form.frequency) newErrors.frequency = 'Frequency is required';
     if (!form.time1) newErrors.time1 = 'At least one time is required';
 
-    if (form.frequency === 'Twice a day' || form.frequency === 'Three times a day') {
-      if (!form.time2) newErrors.time2 = 'Time 2 is required';
-    }
-    if (form.frequency === 'Three times a day') {
-      if (!form.time3) newErrors.time3 = 'Time 3 is required';
+    if ((form.frequency === 'Twice a day' || form.frequency === 'Three times a day') && !form.time2)
+      newErrors.time2 = 'Time 2 is required';
+    if (form.frequency === 'Three times a day' && !form.time3)
+      newErrors.time3 = 'Time 3 is required';
+
+    if (form.repeatSchedule) {
+      if (!form.totalRemindersLeft) {
+        newErrors.totalRemindersLeft = 'Number of days is required';
+      } else if (!/^\d+$/.test(form.totalRemindersLeft) || parseInt(form.totalRemindersLeft, 10) <= 0) {
+        newErrors.totalRemindersLeft = 'Enter a valid positive number of days';
+      }
     }
 
     setErrors(newErrors);
@@ -82,7 +91,6 @@ const ManuallyAdd: React.FC = () => {
 
   const handleSave = useCallback(async () => {
     try {
-      // Get current user; if fails, show error toast
       const user = await account.get();
       if (!validateForm()) {
         Toast.show({
@@ -93,12 +101,28 @@ const ManuallyAdd: React.FC = () => {
         return;
       }
 
-      // Create the medicine document
+      let remindersMultiplier = 1;
+      if (form.frequency === 'Twice a day') {
+        remindersMultiplier = 2;
+      } else if (form.frequency === 'Three times a day') {
+        remindersMultiplier = 3;
+      }
+
+      let totalRemindersLeft = remindersMultiplier;
+      if (form.repeatSchedule && form.totalRemindersLeft) {
+        totalRemindersLeft = remindersMultiplier * parseInt(form.totalRemindersLeft, 10);
+      }
+
+      const documentData = {
+        ...form,
+        totalRemindersLeft,
+      };
+
       const medicineDoc = await database.createDocument(
         config.db,
         config.col.medicines,
         ID.unique(),
-        form,
+        documentData,
         [
           Permission.read(Role.user(user.$id)),
           Permission.write(Role.user(user.$id)),
@@ -134,6 +158,12 @@ const ManuallyAdd: React.FC = () => {
     }
   }, [form, navigation, validateForm]);
 
+  // Determine available frequency options based on the repeatSchedule flag.
+  // If repeatSchedule is true (Yes), hide "Everyday" and "Weekly".
+  const frequencyOptions = form.repeatSchedule
+    ? ['Once a day', 'Twice a day', 'Three times a day']
+    : ['Once a day', 'Twice a day', 'Three times a day', 'Everyday', 'Weekly'];
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -166,7 +196,6 @@ const ManuallyAdd: React.FC = () => {
           </View>
           {errors.medicineType && <Text style={styles.error}>{errors.medicineType}</Text>}
 
-          {/* Quantity */}
           <Text style={styles.label}>Quantity</Text>
           <TextInput
             style={styles.input}
@@ -177,10 +206,46 @@ const ManuallyAdd: React.FC = () => {
           />
           {errors.quantity && <Text style={styles.error}>{errors.quantity}</Text>}
 
-          {/* Frequency */}
+          <Text style={styles.label}>Repeat Medicine Schedule?</Text>
+          <View style={styles.buttonContainer}>
+            {['Yes', 'No'].map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.frequencyButton,
+                  ((option === 'Yes' && form.repeatSchedule) || (option === 'No' && !form.repeatSchedule)) && styles.selectedButton
+                ]}
+                onPress={() => handleChange('repeatSchedule', option === 'Yes')}
+              >
+                <Text style={styles.buttonText}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {form.repeatSchedule && (
+            <>
+              <Text style={styles.label}>Number of Days</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter number of days"
+                keyboardType="numeric"
+                value={form.totalRemindersLeft}
+                onChangeText={(text) => {
+                  const num = parseInt(text, 10);
+                  if (num < 0) {
+                    handleChange('totalRemindersLeft', '0');
+                  } else {
+                    handleChange('totalRemindersLeft', text);
+                  }
+                }}
+              />
+              {errors.totalRemindersLeft && <Text style={styles.error}>{errors.totalRemindersLeft}</Text>}
+            </>
+          )}
+
           <Text style={styles.label}>Frequency</Text>
           <View style={styles.buttonContainer}>
-            {['Once a day', 'Twice a day', 'Three times a day', 'Everyday', 'Weekly'].map((freq) => (
+            {frequencyOptions.map((freq) => (
               <TouchableOpacity
                 key={freq}
                 style={[styles.frequencyButton, form.frequency === freq && styles.selectedButton]}
@@ -192,7 +257,6 @@ const ManuallyAdd: React.FC = () => {
           </View>
           {errors.frequency && <Text style={styles.error}>{errors.frequency}</Text>}
 
-          {/* Time Pickers */}
           {form.frequency && (
             <>
               <Text style={styles.label}>Time 1</Text>
@@ -253,7 +317,6 @@ const ManuallyAdd: React.FC = () => {
             </>
           )}
 
-          {/* Notes */}
           <Text style={styles.label}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
