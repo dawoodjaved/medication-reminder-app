@@ -8,7 +8,8 @@ const config = {
     col: {
       medicines: '67e8ddf2002e07685150',
       reminders: '67ee2174003151d7cf78',
-      pushTokens: '67f09673002ed075f53f'
+      pushTokens: '67f09673002ed075f53f',
+      caregivers: '6803f33700371034307f'
     },
 };
 

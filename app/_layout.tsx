@@ -103,8 +103,10 @@ const RootLayout = () => {
         <Stack.Screen name="EditReminder" options={{ headerShown: false }} />
         <Stack.Screen name="AddMedicine" options={{ headerShown: false }} />
         <Stack.Screen name="LoginScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="CareGiverMainScreen" options={{ headerShown: false }} />
         <Stack.Screen name="MainScreen" options={{ headerShown: false }} />
         <Stack.Screen name="PhoneLoginScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="CareGiverLoginScreen" options={{ headerShown: false }} />
         <Stack.Screen name="ScanMedicineScreen" options={{ headerShown: false }} />
         <Stack.Screen name="OtpVerificationScreen" options={{ headerShown: false }} />
         <Stack.Screen name="TodayScheduler" options={{ headerShown: false }} />

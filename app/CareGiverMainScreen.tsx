@@ -1,39 +1,22 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Text } from './components/customizableFontElements';
-import { registerPushToken } from './utils/registerPushToken';
-const MainScreen = () => {
+
+const CareGiverMainScreen = () => {
   const router = useRouter();
-  const { fromLogin } = useLocalSearchParams();
 
-  useEffect(() => {
-    const registerToken = async () => {
-      try {
-        await registerPushToken();
-      } catch (error) {
-        console.error("Error registering push token:", error);
-      }
-    };
-
-    if(fromLogin) registerToken();
-  }, []);
-
-  console.log('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone)
   return (
     <View style={styles.container}>
       
       <View style={styles.header}>
-        <Text style={styles.title}>Keep Track Stay</Text>
-        <Text style={styles.title2}>Healthy</Text>
-        <Text style={styles.subtitle}>Your Health, Your Control, Check Today’s Meds</Text>
+        <Text style={styles.title}>Support & Care</Text>
+        <Text style={styles.title2}>Made Easy</Text>
+        <Text style={styles.subtitle}>Assist your loved ones</Text>
       </View>
             
       <View style={styles.menuContainer}>
         <MenuButton  title="Add your Medicine" icon={require('../assets/images/AddMed.png')} onPress={() => router.push("/AddMedicine")}/>
-        <MenuButton  title="Add Caregiver" icon={require('../assets/images/setting.png')} onPress={() => router.push("/AddCaregiver")}/>
-        <MenuButton title="Today Schedule" icon={require('../assets/images/todaySchedule.png')} onPress={() => router.push("/TodayScheduler")} />
-        <MenuButton title="Settings" icon={require('../assets/images/setting.png')} onPress={() => router.push("/Settings")}/>
         <MenuButton title="Report" icon={require('../assets/images/Report.png')} onPress={() => router.push("/MedicineReportHistory")}/>
       </View>
     </View>
@@ -120,4 +103,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MainScreen;
+export default CareGiverMainScreen;

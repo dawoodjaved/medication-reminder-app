@@ -140,10 +140,10 @@ export default function ScanMedicineScreen() {
         console.log('Parsed text:', parsed);
         const extractedData = await parseMedicationText(parsed);
         console.log('Extracted data:', extractedData);
-        // Reset image and loading state
+
         setImageUri(null);
         setLoading(false);
-        // Navigate to ManuallyAdd screen with extracted parameters
+
         router.push({
           pathname: '/ManuallyAdd',
           params: {

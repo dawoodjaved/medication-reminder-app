@@ -14,7 +14,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 export default function OtpVerificationScreen() {
   const router = useRouter();
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { caregiver, userId } = useLocalSearchParams<{ caregiver: string, userId: string }>();
 
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const inputRefs = useRef<Array<TextInput | null>>([]);
@@ -65,17 +65,18 @@ export default function OtpVerificationScreen() {
         const activeSession = await account.getSession('current').catch(() => null);
         if (activeSession) {
           console.log('✅ Active session already exists:', activeSession);
-          router.push('/MainScreen');
+          caregiver == 'true' ? router.push('/CareGiverMainScreen') : router.push('/MainScreen'); 
           return;
         }
 
         const session = await account.updatePhoneSession(userId, verificationCode);
         console.log('✅ Session:', session);
 
-        router.push({
+        caregiver == 'true' ? router.push('/CareGiverMainScreen') : router.push({
           pathname: '/MainScreen',
           params: { fromLogin: 'true' },
         });
+        
         Toast.show({
           type: 'success',
           text1: '✅ Success',
