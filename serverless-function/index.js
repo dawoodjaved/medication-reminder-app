@@ -103,6 +103,19 @@ module.exports = async function (req, res) {
               error: pushErr.message,
             });
           }
+
+          if (
+            reminder.totalRemindersLeft > 0
+          ) {
+            await db.updateDocument(
+              databaseId,
+              remindersCol,
+              reminder.$id,
+              {
+                totalRemindersLeft: reminder.totalRemindersLeft - 1,
+              }
+            );
+          }
         }
       } catch (userErr) {
         error(`❌ Error processing user token:`, userErr.message);

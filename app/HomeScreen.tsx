@@ -8,13 +8,15 @@ import {
 } from "react-native";
 import { Text, Link } from "./components/customizableFontElements";
 import { useRouter } from "expo-router";
+import { config, database } from "@/config/appwriteConfig";
+import { Query } from "react-native-appwrite";
 
 const localImage = require("../assets/images/background.jpg");
 const localLogo = require("../assets/images/logo.png");
 
 const { account } = require("../config/appwriteConfig");
 
-const WelcomeScreen = () => {
+const HomeScreen = () => {
   const router = useRouter();
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -23,7 +25,15 @@ const WelcomeScreen = () => {
       try {
         const session = await account.get();
         console.log("User session found:", session);
-        router.replace("/MainScreen");
+
+        
+        const caregiverList = await database.listDocuments(
+        config.db,
+        config.col.caregivers,
+        [Query.equal("phoneNumber", session?.phoneNumber.trim())]
+      );
+
+      caregiverList.total === 0 ? router.replace("/CareGiverMainScreen") : router.replace("/MainScreen");
       } catch (error) {
         console.log("No active session found:", error.message);
         setIsCheckingSession(false);
@@ -54,14 +64,14 @@ const WelcomeScreen = () => {
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity style={styles.signUpButton}>
-            <Link href="/AddCaregiver" style={styles.buttonText}>
-              Sign up
+            <Link href="/CareGiverLoginScreen" style={styles.buttonText}>
+              Caregiver
             </Link>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.loginButton}>
             <Link href="/PhoneLoginScreen" style={styles.buttonText}>
-              Log in
+              User
             </Link>
           </TouchableOpacity>
         </View>
@@ -133,7 +143,7 @@ const styles = StyleSheet.create({
     top: 155,
   },
   signUpButton: {
-    backgroundColor: "#F8C8DC",
+    backgroundColor: "#E75480",
     paddingVertical: 10,
     paddingHorizontal: 27,
     borderRadius: 20,
@@ -150,4 +160,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default WelcomeScreen;
+export default HomeScreen;

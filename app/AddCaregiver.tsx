@@ -1,67 +1,110 @@
 import React, { useState, useCallback } from "react";
-import { View, TextInput, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
-import { Text, Link } from "./components/customizableFontElements";
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+} from "react-native";
+import { Text } from "./components/customizableFontElements";
+import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
-export default function AddCaregiver() {
-  const [phone, setPhone] = useState("");
+import { ID, Permission, Query, Role } from "appwrite";
+const { config, database, account } = require("../config/appwriteConfig");
 
-  const handleSendInvitation = useCallback(() => {
-    if (!phone) {
+export default function AddCaregiver() {
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const router = useRouter();
+
+  const handleSaveCaregiver = useCallback(async () => {
+    if (!phoneNumber.trim()) {
       Toast.show({
         type: "error",
         text1: "❌ Error",
-        text2: "Please enter a phone number before sending the invitation.",
+        text2: "Please enter a phone number before registration.",
       });
       return;
     }
 
-    Toast.show({
-      type: "success",
-      text1: "✅ Invitation Sent",
-      text2: `Invitation sent successfully to ${phone}!`,
-    });
+    try {
+      const user = await account.get();
 
-    // Reset the phone number field
-    setPhone("");
-  }, [phone]);
+      const caregiverList = await database.listDocuments(
+        config.db,
+        config.col.caregivers,
+        [Query.equal("phoneNumber", phoneNumber.trim())]
+      );
+
+      if (caregiverList.total === 0) {
+        Toast.show({
+          type: "error",
+          text1: "❌ Already Registered",
+          text2: "This phone number is already registered as a caregiver.",
+        });
+        return;
+      }
+      const caregiverData = {
+        phoneNumber,
+        invitedAt: new Date().toISOString(),
+      };
+
+      await database.createDocument(
+        config.db,
+        config.col.caregivers,
+        ID.unique(),
+        caregiverData,
+        [
+          Permission.read(Role.user(user.$id)),
+          Permission.write(Role.user(user.$id)),
+        ]
+      );
+
+      Toast.show({
+        type: "success",
+        text1: "✅ Caregiver Registered",
+        text2: `Caregiver registered successfully!`,
+      });
+
+      setPhoneNumber("");
+      router.push("/MainScreen");
+    } catch (error) {
+      console.error("Error adding caregiver:", error);
+      Toast.show({
+        type: "error",
+        text1: "❌ Error",
+        text2: "Failed to send invitation. Please try again.",
+      });
+    }
+  }, [phoneNumber]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Add a Caregiver</Text>
-      </View>
-
       <Text style={styles.description}>
-        Invite a caregiver to assist with managing your medications. They will get an invitation to download the app.
+        Register a caregiver to assist with managing your medications.
       </Text>
 
       <TextInput
         style={styles.input}
-        placeholder="Caregiver's Phone Number"
+        placeholder="+1 XXX XXXXXXX"
         keyboardType="phone-pad"
-        value={phone}
-        onChangeText={setPhone}
+        value={phoneNumber}
+        onChangeText={setPhoneNumber}
       />
-
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: phone ? "#F8C6D2" : "#ccc" }]} // Using pastel pink if phone is entered
-        onPress={handleSendInvitation}
-        disabled={!phone}
-      >
-        <Text style={styles.buttonText}>Send Invitation</Text>
-      </TouchableOpacity>
 
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          Caregivers will have access to your medication reminders and schedule, but your personal details will remain private.
+          Caregivers will have access to add medication and view reports,
+          but your personal details will remain private.
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.backButton}>
-        <Link href={"/Settings"} style={styles.backText}>
-          Back
-        </Link>
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: phoneNumber ? "#E75480" : "#ccc" }]}
+        onPress={handleSaveCaregiver}
+        disabled={!phoneNumber}
+      >
+        <Text style={styles.buttonText}>Register</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -74,18 +117,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     top: 100,
     borderTopRightRadius: 70,
-  },
-  header: {
-    backgroundColor: "#F8C6D2", // Updated to match the add your medication button color
-    paddingVertical: 15,
-    alignItems: "center",
-    borderRadius: 10,
-    marginBottom: 20,
-    top: 40,
-  },
-  headerText: {
-    fontWeight: "bold",
-    color: "#fff", // White text for contrast
   },
   description: {
     textAlign: "center",
@@ -103,13 +134,14 @@ const styles = StyleSheet.create({
   },
   button: {
     padding: 15,
+    marginTop: 20,
     borderRadius: 8,
     alignItems: "center",
     top: 40,
   },
   buttonText: {
     fontWeight: "bold",
-    color: "#fff", // White text for buttons
+    color: "#fff",
   },
   infoBox: {
     backgroundColor: "#E8F5E9",
@@ -121,17 +153,5 @@ const styles = StyleSheet.create({
   infoText: {
     textAlign: "center",
     color: "#000",
-  },
-  backButton: {
-    marginTop: 20,
-    backgroundColor: "#F8C6D2", // Matching button color
-    padding: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    top: 40,
-  },
-  backText: {
-    color: "#fff", // White text for contrast
-    fontWeight: "bold",
-  },
+  }
 });

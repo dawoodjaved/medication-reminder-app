@@ -8,16 +8,16 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
-import { Text, Link } from "./components/customizableFontElements";
+import { Text } from "./components/customizableFontElements";
 import Toast from "react-native-toast-message";
-import { ID } from "appwrite";
+import { ID, Query } from "appwrite";
 import { useRouter } from "expo-router";
-const { account } = require("../config/appwriteConfig");
+const { config, database, account } = require("../config/appwriteConfig");
 
 const localImage = require("../assets/images/loginImage.jpg");
 const localLogo = require("../assets/images/logo2.png");
 
-const PhoneLoginScreen: React.FC = () => {
+const CareGiverLoginScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const router = useRouter();
 
@@ -35,6 +35,21 @@ const PhoneLoginScreen: React.FC = () => {
       }
 
       try {
+        const caregiverList = await database.listDocuments(
+          config.db,
+          config.col.caregivers,
+          [Query.equal("phoneNumber", phoneNumber.trim())]
+        );
+
+        if (caregiverList.total === 0) {
+          Toast.show({
+            type: "error",
+            text1: "❌ Not Found",
+            text2: "This phone number is not registered as a caregiver.",
+          });
+          return;
+        }
+
         const token = await account.createPhoneToken(ID.unique(), phoneNumber);
         Toast.show({
           type: "success",
@@ -44,7 +59,7 @@ const PhoneLoginScreen: React.FC = () => {
         router.push({
           pathname: "/OtpVerificationScreen",
           params: {
-            caregiver: 'false',
+            caregiver: 'true',
             userId: token.userId,
           },
         });
@@ -68,14 +83,11 @@ const PhoneLoginScreen: React.FC = () => {
           <ImageBackground source={localLogo} style={styles.logo} />
         </ImageBackground>
 
-        {/* Signup Card */}
         <View style={styles.card}>
           <Text style={styles.title}>
-            Create Your {"\n"}MedRem Account
           </Text>
-          <Text style={styles.subtitle}>Your Personal Pill Reminder!</Text>
+          <Text style={styles.subtitle}>Login as a caregiver!</Text>
 
-          {/* Phone Number Input */}
           <Text style={styles.label}>Phone Number</Text>
           <TextInput
             style={styles.input}
@@ -180,4 +192,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PhoneLoginScreen;
+export default CareGiverLoginScreen;
