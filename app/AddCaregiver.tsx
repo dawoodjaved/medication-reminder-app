@@ -36,7 +36,7 @@ export default function AddCaregiver() {
         [Query.equal("phoneNumber", phoneNumber.trim())]
       );
 
-      if (caregiverList.total === 0) {
+      if (caregiverList.total > 0) {
         Toast.show({
           type: "error",
           text1: "❌ Already Registered",
