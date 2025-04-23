@@ -51,7 +51,9 @@ If you want to generate an APK file:
    eas build -p ios --profile preview
    ```
 > You will get a download link for the APK from the Expo build service.
- 
+
+## Flow Chart Diagram
+![Screenshot](/assets/images/Diagram.png)
 
 
 ## Learn more
