@@ -1,182 +1,262 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback } from 'react';
 import {
   View,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
+  Image,
   Keyboard,
   TouchableWithoutFeedback,
-} from "react-native";
-import { Text, Link } from "./components/customizableFontElements";
-import Toast from "react-native-toast-message";
-import { ID } from "appwrite";
-import { useRouter } from "expo-router";
-const { account } = require("../config/appwriteConfig");
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from './_components/customizableFontElements';
+import Toast from 'react-native-toast-message';
+import { ID } from 'appwrite';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { account } from '../config/appwriteConfig';
+import { colors, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
+import { useAuth } from './_context/authContext';
 
-const localImage = require("../assets/images/loginImage.jpg");
-const localLogo = require("../assets/images/logo2.png");
+const localLogo = require('../assets/images/logo.png');
 
 const PhoneLoginScreen: React.FC = () => {
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [mode, setMode] = useState<'email' | 'phone'>('email');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [sending, setSending] = useState(false);
   const router = useRouter();
+  const { refreshScope } = useAuth();
 
-  const sendVerificationCode = useCallback(
-    async (e: { preventDefault: () => void }) => {
-      e.preventDefault();
+  const sendVerificationCode = useCallback(async () => {
+    if (!phoneNumber.trim()) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please enter a valid phone number.',
+      });
+      return;
+    }
 
-      if (!phoneNumber.trim()) {
-        Toast.show({
-          type: "error",
-          text1: "❌ Error",
-          text2: "Please enter a valid phone number.",
-        });
-        return;
+    setSending(true);
+    try {
+      const token = await account.createPhoneToken(ID.unique(), phoneNumber.trim());
+      Toast.show({
+        type: 'success',
+        text1: 'OTP sent',
+        text2: `Code sent to ${phoneNumber}.`,
+      });
+      router.push({
+        pathname: '/OtpVerificationScreen',
+        params: { caregiver: 'false', userId: token.userId },
+      });
+    } catch (error) {
+      console.error('Phone token error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Phone OTP unavailable',
+        text2: 'Free plan has no SMS. Use email login instead.',
+      });
+    } finally {
+      setSending(false);
+    }
+  }, [phoneNumber, router]);
+
+  const signInWithEmail = useCallback(async () => {
+    if (!email.trim() || !password) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Enter email and password.',
+      });
+      return;
+    }
+
+    setSending(true);
+    try {
+      if (authMode === 'signup') {
+        try {
+          await account.create(
+            ID.unique(),
+            email.trim().toLowerCase(),
+            password,
+            name.trim() || undefined
+          );
+        } catch (e: any) {
+          const msg = String(e?.message || e).toLowerCase();
+          if (!msg.includes('already')) throw e;
+        }
       }
-
-      try {
-        const token = await account.createPhoneToken(ID.unique(), phoneNumber);
-        Toast.show({
-          type: "success",
-          text1: "✅ OTP Sent",
-          text2: `OTP has been sent to ${phoneNumber}.`,
-        });
-        router.push({
-          pathname: "/OtpVerificationScreen",
-          params: {
-            caregiver: 'false',
-            userId: token.userId,
-          },
-        });
-      } catch (error) {
-        console.error("Phone token error:", error);
-        Toast.show({
-          type: "error",
-          text1: "❌ Error",
-          text2:
-            "Failed to send OTP. Please check your phone number and try again.",
-        });
-      }
-    },
-    [phoneNumber, router]
-  );
+      await account.createEmailPasswordSession(email.trim().toLowerCase(), password);
+      await refreshScope();
+      Toast.show({ type: 'success', text1: authMode === 'signup' ? 'Account ready' : 'Signed in' });
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('Email login error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Sign-in failed',
+        text2: 'Check email/password and try again.',
+      });
+    } finally {
+      setSending(false);
+    }
+  }, [email, password, name, authMode, refreshScope, router]);
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        <ImageBackground source={localImage} style={styles.background}>
-          <ImageBackground source={localLogo} style={styles.logo} />
-        </ImageBackground>
+      <SafeAreaView style={styles.safe}>
+        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={22} color={colors.white} />
+        </TouchableOpacity>
 
-        {/* Signup Card */}
-        <View style={styles.card}>
-          <Text style={styles.title}>
-            Create Your {"\n"}MedRem Account
-          </Text>
-          <Text style={styles.subtitle}>Your Personal Pill Reminder!</Text>
-
-          {/* Phone Number Input */}
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="+1 XXX XXXXXXX"
-            keyboardType="phone-pad"
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-          />
-          <TouchableOpacity
-            style={styles.signUpButton}
-            onPress={sendVerificationCode}
-          >
-            <Text style={styles.buttonText}>Send OTP</Text>
-          </TouchableOpacity>
+        <View style={styles.hero}>
+          <Image source={localLogo} style={styles.logo} />
         </View>
-      </View>
+
+        <View style={screen.sheetGrow}>
+          <Text style={screen.brand}>MedRem</Text>
+          <Text style={screen.title}>Create your account</Text>
+          <Text style={screen.subtitle}>
+            Free plan: use email. Phone OTP needs paid SMS.
+          </Text>
+
+          <View style={styles.modeRow}>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'email' && styles.modeActive]}
+              onPress={() => setMode('email')}
+            >
+              <Text style={[styles.modeText, mode === 'email' && styles.modeTextActive]}>Email</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'phone' && styles.modeActive]}
+              onPress={() => setMode('phone')}
+            >
+              <Text style={[styles.modeText, mode === 'phone' && styles.modeTextActive]}>Phone</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === 'email' ? (
+            <>
+              <View style={styles.modeRow}>
+                <TouchableOpacity
+                  style={[styles.modeBtn, authMode === 'signin' && styles.modeActive]}
+                  onPress={() => setAuthMode('signin')}
+                >
+                  <Text style={[styles.modeText, authMode === 'signin' && styles.modeTextActive]}>
+                    Sign in
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeBtn, authMode === 'signup' && styles.modeActive]}
+                  onPress={() => setAuthMode('signup')}
+                >
+                  <Text style={[styles.modeText, authMode === 'signup' && styles.modeTextActive]}>
+                    Create account
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {authMode === 'signup' && (
+                <>
+                  <Text style={screen.label}>Name</Text>
+                  <TextInput
+                    style={screen.input}
+                    placeholder="Your name"
+                    placeholderTextColor={colors.textMuted}
+                    value={name}
+                    onChangeText={setName}
+                  />
+                </>
+              )}
+
+              <Text style={screen.label}>Email</Text>
+              <TextInput
+                style={screen.input}
+                placeholder="you@email.com"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+              <Text style={screen.label}>Password</Text>
+              <TextInput
+                style={screen.input}
+                placeholder="Password (8+ chars)"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity
+                style={[screen.primaryBtn, sending && { opacity: 0.7 }]}
+                onPress={signInWithEmail}
+                disabled={sending}
+              >
+                <Text style={screen.primaryBtnText}>
+                  {sending
+                    ? 'Please wait…'
+                    : authMode === 'signup'
+                      ? 'Create account'
+                      : 'Sign in'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/AcceptInvite')}>
+                <Text style={styles.inviteLink}>Have a caregiver invite? Accept here</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={screen.label}>Phone number</Text>
+              <TextInput
+                style={screen.input}
+                placeholder="+1 XXX XXXXXXX"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+              />
+              <TouchableOpacity
+                style={[screen.primaryBtn, sending && { opacity: 0.7 }]}
+                onPress={sendVerificationCode}
+                disabled={sending}
+              >
+                <Text style={screen.primaryBtnText}>{sending ? 'Sending…' : 'Send OTP'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
     </TouchableWithoutFeedback>
   );
 };
 
-// Styles
 const styles = StyleSheet.create({
-  container: {
+  safe: { flex: 1, backgroundColor: colors.primary },
+  back: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  hero: { alignItems: 'center', paddingVertical: spacing.lg },
+  logo: { width: 88, height: 88, borderRadius: 44 },
+  modeRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  modeBtn: {
     flex: 1,
-    backgroundColor: "#EDEDED",
-    alignItems: "center",
-  },
-  background: {
-    width: "100%",
-    height: 200,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backButton: {
-    position: "absolute",
-    top: 10,
-    left: 15,
-  },
-  backText: {
-    color: "#35134F",
-    fontSize: 16,
-  },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 50,
-    marginTop: 20,
-  },
-  card: {
-    width: "100%",
-    height: "90%",
-    backgroundColor: "#EBEBEB",
-    borderRadius: 20,
-    padding: 20,
-    alignItems: "center",
-    elevation: 5,
-  },
-  title: {
-    fontWeight: "bold",
-    color: "#35134F",
-    marginBottom: 28,
-    textAlign: "center",
-  },
-  subtitle: {
-    color: "#777",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  label: {
-    alignSelf: "flex-start",
-    fontWeight: "bold",
-    color: "#444",
-    marginTop: 10,
-  },
-  input: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "#FDEFF4",
-    padding: 12,
+    paddingVertical: spacing.sm,
     borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
   },
-  signUpButton: {
-    backgroundColor: "#E75480",
-    paddingVertical: 13,
-    paddingHorizontal: 15,
-    borderRadius: 10,
-    marginTop: 15,
-    top: -73,
-    right: -120,
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  loginText: {
-    marginTop: 10,
-  },
-  loginLink: {
-    color: "#E75480",
-    fontWeight: "bold",
+  modeActive: { backgroundColor: colors.primary },
+  modeText: { color: colors.textMuted, fontWeight: '600' },
+  modeTextActive: { color: colors.white },
+  inviteLink: {
+    marginTop: spacing.md,
+    textAlign: 'center',
+    color: colors.primarySoft,
+    fontWeight: '600',
   },
 });
 

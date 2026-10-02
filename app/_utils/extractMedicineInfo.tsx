@@ -190,11 +190,17 @@ async function parsePrescriptionTextByGrok(text: string) {
       `;
 
 
+  const groqKey = process.env.EXPO_PUBLIC_GROQ_API_KEY;
+  if (!groqKey) {
+    console.warn('EXPO_PUBLIC_GROQ_API_KEY not set — falling back to manual parse');
+    return { error: true, message: 'Missing Groq API key' };
+  }
+
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer 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',
+        'Authorization': `Bearer ${groqKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

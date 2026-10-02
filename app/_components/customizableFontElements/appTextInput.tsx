@@ -1,6 +1,6 @@
 import React from 'react';
 import { TextInput, TextInputProps, StyleProp, TextStyle } from 'react-native';
-import { useFontSize } from '../../context/fontSizeContext';
+import { useFontSize } from '../../_context/fontSizeContext';
 
 export const AppTextInput = ({ style, ...props }: TextInputProps) => {
   const { fontSize } = useFontSize();

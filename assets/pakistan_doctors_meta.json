@@ -1,0 +1,571 @@
+{
+  "total": 11142,
+  "skipped": 618,
+  "sourceRows": 11760,
+  "cities": [
+    {
+      "name": "Karachi",
+      "count": 2704
+    },
+    {
+      "name": "Lahore",
+      "count": 2456
+    },
+    {
+      "name": "Islamabad",
+      "count": 1469
+    },
+    {
+      "name": "Faisalabad",
+      "count": 881
+    },
+    {
+      "name": "Rawalpindi",
+      "count": 871
+    },
+    {
+      "name": "Peshawar",
+      "count": 839
+    },
+    {
+      "name": "Multan",
+      "count": 752
+    },
+    {
+      "name": "Hyderabad",
+      "count": 389
+    },
+    {
+      "name": "Quetta",
+      "count": 174
+    },
+    {
+      "name": "Gujranwala",
+      "count": 162
+    },
+    {
+      "name": "Bahawalpur",
+      "count": 92
+    },
+    {
+      "name": "Sargodha",
+      "count": 78
+    },
+    {
+      "name": "Sialkot",
+      "count": 58
+    },
+    {
+      "name": "Gujrat",
+      "count": 42
+    },
+    {
+      "name": "Abbottabad",
+      "count": 22
+    },
+    {
+      "name": "Sahiwal",
+      "count": 21
+    },
+    {
+      "name": "Jhelum",
+      "count": 18
+    },
+    {
+      "name": "Rahim Yar Khan",
+      "count": 16
+    },
+    {
+      "name": "Larkana",
+      "count": 16
+    },
+    {
+      "name": "Mardan",
+      "count": 14
+    },
+    {
+      "name": "Jhang",
+      "count": 13
+    },
+    {
+      "name": "Okara",
+      "count": 12
+    },
+    {
+      "name": "Kasur",
+      "count": 10
+    },
+    {
+      "name": "Wah Cantt",
+      "count": 9
+    },
+    {
+      "name": "Dera Ghazi Khan",
+      "count": 7
+    },
+    {
+      "name": "Sheikhupura",
+      "count": 6
+    },
+    {
+      "name": "Sukkur",
+      "count": 4
+    },
+    {
+      "name": "Kohat",
+      "count": 2
+    },
+    {
+      "name": "Nawabshah",
+      "count": 1
+    },
+    {
+      "name": "Muzaffargarh",
+      "count": 1
+    },
+    {
+      "name": "Khairpur",
+      "count": 1
+    },
+    {
+      "name": "Khanewal",
+      "count": 1
+    },
+    {
+      "name": "Mandi Bahauddin",
+      "count": 1
+    }
+  ],
+  "specialties": [
+    {
+      "name": "Gynecologist",
+      "count": 973
+    },
+    {
+      "name": "General Physician",
+      "count": 784
+    },
+    {
+      "name": "Dentist",
+      "count": 778
+    },
+    {
+      "name": "Pediatrician",
+      "count": 730
+    },
+    {
+      "name": "General Surgeon",
+      "count": 726
+    },
+    {
+      "name": "Internal Medicine Specialist",
+      "count": 600
+    },
+    {
+      "name": "Orthopedic Surgeon",
+      "count": 597
+    },
+    {
+      "name": "Physiotherapist",
+      "count": 576
+    },
+    {
+      "name": "Cardiologist",
+      "count": 573
+    },
+    {
+      "name": "Dermatologist",
+      "count": 567
+    },
+    {
+      "name": "Urologist",
+      "count": 466
+    },
+    {
+      "name": "Eye Specialist",
+      "count": 444
+    },
+    {
+      "name": "ENT Specialist",
+      "count": 417
+    },
+    {
+      "name": "Psychiatrist",
+      "count": 371
+    },
+    {
+      "name": "Gastroenterologist",
+      "count": 355
+    },
+    {
+      "name": "Pulmonologist",
+      "count": 329
+    },
+    {
+      "name": "Neurosurgeon",
+      "count": 328
+    },
+    {
+      "name": "Neurologist",
+      "count": 313
+    },
+    {
+      "name": "Plastic Surgeon",
+      "count": 232
+    },
+    {
+      "name": "Nephrologist",
+      "count": 230
+    },
+    {
+      "name": "Nutritionist",
+      "count": 183
+    },
+    {
+      "name": "Diabetologist",
+      "count": 151
+    },
+    {
+      "name": "Oncologist",
+      "count": 147
+    },
+    {
+      "name": "Homeopath",
+      "count": 100
+    },
+    {
+      "name": "Endocrinologist",
+      "count": 86
+    },
+    {
+      "name": "Rheumatologist",
+      "count": 83
+    },
+    {
+      "name": "Acupuncturist",
+      "count": 3
+    }
+  ],
+  "topHospitals": [
+    {
+      "name": "Lady Reading Hospital",
+      "count": 122
+    },
+    {
+      "name": "Shifa International Hospital",
+      "count": 79
+    },
+    {
+      "name": "Buch International Hospital (BIH)",
+      "count": 68
+    },
+    {
+      "name": "Faisal Hospital (New Building)",
+      "count": 68
+    },
+    {
+      "name": "Hameed Latif Hospital",
+      "count": 66
+    },
+    {
+      "name": "Rehman Medical Institute - RMI",
+      "count": 63
+    },
+    {
+      "name": "The Aga Khan University Hospital Karachi",
+      "count": 62
+    },
+    {
+      "name": "Saleem Memorial Hospital",
+      "count": 55
+    },
+    {
+      "name": "Quaid-e-Azam International Hospital",
+      "count": 55
+    },
+    {
+      "name": "Advanced International Hospital",
+      "count": 53
+    },
+    {
+      "name": "Hashmanis Hospital (Saddar)",
+      "count": 52
+    },
+    {
+      "name": "National Hospital & Medical Centre",
+      "count": 51
+    },
+    {
+      "name": "Patel Hospital",
+      "count": 50
+    },
+    {
+      "name": "Ali Medical Centre (Islamabad)",
+      "count": 49
+    },
+    {
+      "name": "Doctors Hospital",
+      "count": 47
+    },
+    {
+      "name": "Independent Univeristy Hospital",
+      "count": 46
+    },
+    {
+      "name": "Khushal Medical Center",
+      "count": 44
+    },
+    {
+      "name": "MaxHealth Hospital",
+      "count": 42
+    },
+    {
+      "name": "Karachi Medical Complex (Consultant Clinics)",
+      "count": 41
+    },
+    {
+      "name": "National Medical Centre (Karachi)",
+      "count": 40
+    },
+    {
+      "name": "Anum Hospital",
+      "count": 36
+    },
+    {
+      "name": "South City Hospital",
+      "count": 35
+    },
+    {
+      "name": "Omar Hospital & Cardiac Centre (Johar Town)",
+      "count": 34
+    },
+    {
+      "name": "Khatak Medical Center",
+      "count": 34
+    },
+    {
+      "name": "Farooq Hospital (DHA)",
+      "count": 34
+    },
+    {
+      "name": "Medicare Hospital (Multan)",
+      "count": 33
+    },
+    {
+      "name": "Health Icon Medical & Diagnostic Centre",
+      "count": 33
+    },
+    {
+      "name": "Bakhtawar Amin Medical and Dental College",
+      "count": 33
+    },
+    {
+      "name": "Muhammad Medical Complex (MMC)",
+      "count": 33
+    },
+    {
+      "name": "Taj Medical Complex (TMC)",
+      "count": 33
+    },
+    {
+      "name": "Aziz Fatimah Hospital (AFH)",
+      "count": 33
+    },
+    {
+      "name": "Aga Khan University Hospital",
+      "count": 33
+    },
+    {
+      "name": "Darul Sehat Hospital",
+      "count": 32
+    },
+    {
+      "name": "Mujahid Hospital (Faisalabad)",
+      "count": 32
+    },
+    {
+      "name": "Kulsum International Hospital",
+      "count": 32
+    },
+    {
+      "name": "Khyber Medical Centre (Dabgari Garden)",
+      "count": 32
+    },
+    {
+      "name": "Hill Park General Hospital (HPGH)",
+      "count": 31
+    },
+    {
+      "name": "Al-Hujjat Medical & Diagnostics",
+      "count": 31
+    },
+    {
+      "name": "Shalamar Hospital",
+      "count": 31
+    },
+    {
+      "name": "Aga Khan Maternal and Child Care Centre ( Hyderabad )",
+      "count": 31
+    },
+    {
+      "name": "Omer Diagnostics and Specialist Clinics",
+      "count": 30
+    },
+    {
+      "name": "Clinic",
+      "count": 30
+    },
+    {
+      "name": "City Hospital (Multan)",
+      "count": 30
+    },
+    {
+      "name": "Medilink Consultant Clinics",
+      "count": 30
+    },
+    {
+      "name": "Pak Medical Center (Peshawar)",
+      "count": 30
+    },
+    {
+      "name": "Bhittai Hospital (Latifabad)",
+      "count": 30
+    },
+    {
+      "name": "Fatima Memorial Hospital",
+      "count": 29
+    },
+    {
+      "name": "Rubina Memorial Hospital",
+      "count": 29
+    },
+    {
+      "name": "Omar Hospital & Cardiac Centre (Jail Road)",
+      "count": 28
+    },
+    {
+      "name": "Ibn-e-Seena Hospital (Karachi)",
+      "count": 28
+    },
+    {
+      "name": "Islamabad Specialists Clinic (F-8 Markaz)",
+      "count": 28
+    },
+    {
+      "name": "Mukhtar A. Sheikh Hospital",
+      "count": 28
+    },
+    {
+      "name": "Hayatabad Medical Complex",
+      "count": 28
+    },
+    {
+      "name": "Zubaida Medical Centre (ZMC)",
+      "count": 28
+    },
+    {
+      "name": "Iqra Medical Complex",
+      "count": 27
+    },
+    {
+      "name": "Nazeer Begum Memorial Hospital",
+      "count": 27
+    },
+    {
+      "name": "Mian Muhammad Trust Hospital",
+      "count": 27
+    },
+    {
+      "name": "OMI Hospital",
+      "count": 26
+    },
+    {
+      "name": "Mohmand Medical Centre",
+      "count": 26
+    },
+    {
+      "name": "Surgimed Hospital",
+      "count": 26
+    },
+    {
+      "name": "Evercare Hospital",
+      "count": 26
+    },
+    {
+      "name": "Park Lane Hospital",
+      "count": 26
+    },
+    {
+      "name": "Bilal Hospital",
+      "count": 26
+    },
+    {
+      "name": "Shifa International Hospitals Ltd",
+      "count": 26
+    },
+    {
+      "name": "Liaquat National Hospital & Medical College",
+      "count": 25
+    },
+    {
+      "name": "RIMS Trauma Hospital",
+      "count": 25
+    },
+    {
+      "name": "Sarf Hospital",
+      "count": 25
+    },
+    {
+      "name": "Darmaan Hospital & Institute",
+      "count": 25
+    },
+    {
+      "name": "Sindh Institute of Urology and Transplantation (SIUT)",
+      "count": 25
+    },
+    {
+      "name": "Mamji Hospital",
+      "count": 24
+    },
+    {
+      "name": "Maroof International Hospital",
+      "count": 24
+    },
+    {
+      "name": "Mega Medical Complex",
+      "count": 24
+    },
+    {
+      "name": "DHA Medical Centre (Karachi)",
+      "count": 24
+    },
+    {
+      "name": "Shaukat Khanum Memorial Cancer Hospital & Research Centre",
+      "count": 24
+    },
+    {
+      "name": "Maryam Memorial Hospital (Peshawar Road)",
+      "count": 24
+    },
+    {
+      "name": "AKUH Consulting Clinic",
+      "count": 24
+    },
+    {
+      "name": "Iqra Medical Complex (Ext - New Building)",
+      "count": 23
+    },
+    {
+      "name": "Islamabad Specialists Clinic (People Colony)",
+      "count": 23
+    },
+    {
+      "name": "Peshawar GENERAL HOSPITAL",
+      "count": 23
+    },
+    {
+      "name": "Usman Memorial Hospital (UMH)",
+      "count": 22
+    }
+  ]
+}

@@ -1,159 +1,197 @@
 import { router, Stack } from 'expo-router';
-import { FontSizeProvider } from './context/fontSizeContext';
-
+import { FontSizeProvider } from './_context/fontSizeContext';
+import { AuthProvider } from './_context/authContext';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useRef, useState } from 'react';
-
+import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import Toast, {BaseToast, ToastConfig, ToastProps} from "react-native-toast-message";
-import { NotificationSettingsProvider } from './context/notificationSettingsContext';
+import Toast, { BaseToast, ToastConfig, ToastProps } from 'react-native-toast-message';
+import { NotificationSettingsProvider, useNotificationSettings } from './_context/notificationSettingsContext';
+import { colors } from './_theme/colors';
+import { flushOfflineQueue } from './_utils/reminderActions';
+import * as Linking from 'expo-linking';
 
 const toastConfig: ToastConfig = {
   snoozed: (props: ToastProps) => (
     <BaseToast
       {...props}
       style={{
-        borderLeftColor: '#FFA500',
-        minHeight: 100,
-        paddingVertical: 20,
+        borderLeftColor: colors.warning,
+        minHeight: 80,
+        paddingVertical: 16,
       }}
-      contentContainerStyle={{
-        paddingHorizontal: 24,
-        justifyContent: 'center',
-      }}
-      text1Style={{
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#000',
-      }}
-      text2Style={{
-        fontSize: 20,
-        color: '#333',
-      }}
+      contentContainerStyle={{ paddingHorizontal: 20, justifyContent: 'center' }}
+      text1Style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}
+      text2Style={{ fontSize: 15, color: colors.textMuted }}
     />
   ),
 };
 
+function handleInviteUrl(url: string | null) {
+  if (!url) return;
+  try {
+    const parsed = Linking.parse(url);
+    const path = (parsed.path || '').replace(/^\//, '');
+    const token = (parsed.queryParams?.token as string) || undefined;
+    if (token || path === 'invite' || url.includes('invite')) {
+      const t =
+        token ||
+        (() => {
+          const m = url.match(/[?&]token=([^&]+)/);
+          return m ? decodeURIComponent(m[1]) : '';
+        })();
+      router.push({ pathname: '/AcceptInvite', params: t ? { token: t } : {} });
+    }
+  } catch (e) {
+    console.warn('Invite link parse failed', e);
+  }
+}
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-const RootLayout = () => {
-  const [expoPushToken, setExpoPushToken] = useState('');
-  const [channels, setChannels] = useState<Notifications.NotificationChannel[]>([]);
-  const notificationListener = useRef<Notifications.EventSubscription>();
+function NotificationBootstrap({ children }: { children: React.ReactNode }) {
+  const { reminderNotifications, soundAlerts } = useNotificationSettings();
   const responseListener = useRef<Notifications.EventSubscription>();
+  const isNative = Platform.OS !== 'web';
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => token && setExpoPushToken(token));
+    const sub = Linking.addEventListener('url', ({ url: u }) => handleInviteUrl(u));
+    Linking.getInitialURL().then(handleInviteUrl);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!isNative) return;
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: reminderNotifications,
+        shouldPlaySound: reminderNotifications && soundAlerts,
+        shouldSetBadge: false,
+      }),
+    });
+  }, [reminderNotifications, soundAlerts, isNative]);
+
+  useEffect(() => {
+    flushOfflineQueue();
+    if (!isNative) return;
+
+    registerForPushNotificationsAsync();
 
     Notifications.setNotificationCategoryAsync('med-reminders-category', [
       {
         identifier: 'TAKEN',
-        buttonTitle: '✅ Taken',
+        buttonTitle: 'Taken',
         options: { opensAppToForeground: true },
       },
       {
         identifier: 'SNOOZE',
-        buttonTitle: '🕒 Snooze',
+        buttonTitle: 'Snooze',
         options: { opensAppToForeground: false },
       },
     ]);
 
-    if (Platform.OS === 'android') {
-      Notifications.getNotificationChannelsAsync().then(value => setChannels(value ?? []));
-    }
-
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
-      async response => {
+      async (response) => {
         const data = response.notification.request.content.data;
         const reminderId = data?.reminderId;
-
         if (!reminderId) return;
 
         router.push({
           pathname: '/ReminderNotification',
-          params: { reminderId, time: data?.time, medicineName: data?.medicineName, description: data?.description },
+          params: {
+            reminderId: String(reminderId),
+            time: String(data?.time || ''),
+            medicineName: String(data?.medicineName || ''),
+            description: String(data?.description || ''),
+            medicineId: data?.medicineId ? String(data.medicineId) : '',
+          },
         });
       }
     );
 
     return () => {
-      notificationListener.current &&
-        Notifications.removeNotificationSubscription(notificationListener.current);
       responseListener.current &&
         Notifications.removeNotificationSubscription(responseListener.current);
     };
-  }, []);
+  }, [isNative]);
 
+  return <>{children}</>;
+}
+
+const RootLayout = () => {
   return (
     <NotificationSettingsProvider>
-    <FontSizeProvider>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="ManuallyAdd" options={{ headerShown: false }} />
-        <Stack.Screen name="HomeScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="EditReminder" options={{ headerShown: false }} />
-        <Stack.Screen name="AddMedicine" options={{ headerShown: false }} />
-        <Stack.Screen name="LoginScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="CareGiverMainScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="MainScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="PhoneLoginScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="CareGiverLoginScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="ScanMedicineScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="OtpVerificationScreen" options={{ headerShown: false }} />
-        <Stack.Screen name="TodayScheduler" options={{ headerShown: false }} />
-        <Stack.Screen name="notifications" options={{ headerShown: false }} />
-        <Stack.Screen name="Settings" options={{ headerShown: false }} />
-        <Stack.Screen name="MedicineReportHistory" options={{ headerShown: false }} />
-        <Stack.Screen name="ReminderNotification" options={{ headerShown: false }} />
-      </Stack>
-      <Toast config={toastConfig} />
-    </FontSizeProvider>
+      <FontSizeProvider>
+        <AuthProvider>
+          <NotificationBootstrap>
+            <Stack>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="Onboarding" options={{ headerShown: false }} />
+              <Stack.Screen name="ManuallyAdd" options={{ headerShown: false }} />
+              <Stack.Screen name="HomeScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="EditReminder" options={{ headerShown: false }} />
+              <Stack.Screen name="EditMedicine" options={{ headerShown: false }} />
+              <Stack.Screen name="AddMedicine" options={{ headerShown: false }} />
+              <Stack.Screen name="AddCaregiver" options={{ headerShown: false }} />
+              <Stack.Screen name="AcceptInvite" options={{ headerShown: false }} />
+              <Stack.Screen name="CaregiverFeed" options={{ headerShown: false }} />
+              <Stack.Screen name="LogSymptom" options={{ headerShown: false }} />
+              <Stack.Screen name="DoctorDetail" options={{ headerShown: false }} />
+              <Stack.Screen name="BookAppointment" options={{ headerShown: false }} />
+              <Stack.Screen name="MyAppointments" options={{ headerShown: false }} />
+              <Stack.Screen name="CareGiverMainScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="MainScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="PhoneLoginScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="CareGiverLoginScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="ScanMedicineScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="OtpVerificationScreen" options={{ headerShown: false }} />
+              <Stack.Screen name="TodayScheduler" options={{ headerShown: false }} />
+              <Stack.Screen name="Settings" options={{ headerShown: false }} />
+              <Stack.Screen name="MedicineReportHistory" options={{ headerShown: false }} />
+              <Stack.Screen name="ReminderNotification" options={{ headerShown: false }} />
+            </Stack>
+            <Toast config={toastConfig} />
+          </NotificationBootstrap>
+        </AuthProvider>
+      </FontSizeProvider>
     </NotificationSettingsProvider>
   );
 };
 
 async function registerForPushNotificationsAsync() {
-  let token;
+  if (Platform.OS === 'web') return;
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('myNotificationChannel', {
-      name: 'A channel is needed for the permissions prompt to appear',
+      name: 'Medication reminders',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
+      lightColor: colors.accent,
+    });
+    await Notifications.setNotificationChannelAsync('med-critical', {
+      name: 'Critical medication alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500],
+      lightColor: colors.danger,
+    });
+    await Notifications.setNotificationChannelAsync('med-reminders', {
+      name: 'Medication reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: colors.accent,
     });
   }
 
-  if (Device.isDevice) {
-    try {
-      const projectId =
-        Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-      if (!projectId) {
-        throw new Error('Project ID not found');
-      }
-      token = (
-        await Notifications.getExpoPushTokenAsync({
-          projectId,
-        })
-      ).data;
-      console.log('Expo Push Token:', token);
-    } catch (e) {
-      token = `${e}`;
-    }
-  } else {
-    alert('Must use physical device for Push Notifications');
-  }
+  if (!Device.isDevice) return;
 
-  return token;
+  try {
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+    if (!projectId) return;
+    await Notifications.getExpoPushTokenAsync({ projectId });
+  } catch (e) {
+    console.warn('Push token error', e);
+  }
 }
 
 export default RootLayout;

@@ -1,7 +1,7 @@
 // components/AppText.tsx
 import React from 'react';
 import { Text, TextProps, StyleProp, TextStyle } from 'react-native';
-import { useFontSize } from '../../context/fontSizeContext';
+import { useFontSize } from '../../_context/fontSizeContext';
 
 export const AppText = ({ style, ...props }: TextProps) => {
   const { fontSize } = useFontSize();

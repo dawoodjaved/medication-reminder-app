@@ -1,134 +1,145 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-} from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { Ionicons, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
-import { Text } from "./components/customizableFontElements";
-import * as Print from "expo-print";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
-import { database, account, config } from "../config/appwriteConfig";
-import { Query } from "appwrite";
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import { Text } from './_components/customizableFontElements';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { database, account, config } from '../config/appwriteConfig';
+import { Query } from 'appwrite';
+import { resolvePatientScope } from './_utils/patientScope';
+import { colors, radii, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
+import { ProgressRing, MedHintIcon, SoftOrbs, FadeBlock } from './_theme/visuals';
 
 interface Medication {
   name: string;
   dose: number | string;
 }
 
+function formatDateToISO(dateObj: Date): string {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateForDisplay(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 export default function MedicineReportHistory() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-
-  const [startDate, setStartDate] = useState<string>(getDefaultStartDate());
-  const [endDate, setEndDate] = useState<string>(getDefaultEndDate());
-
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return formatDateToISO(d);
+  });
+  const [endDate, setEndDate] = useState(() => formatDateToISO(new Date()));
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
-
-  const [dateRangeLabel, setDateRangeLabel] = useState("");
-
+  const [dateRangeLabel, setDateRangeLabel] = useState('');
   const [taken, setTaken] = useState<Medication[]>([]);
   const [missed, setMissed] = useState<Medication[]>([]);
   const [adherence, setAdherence] = useState(0);
-
-  function getDefaultEndDate(): string {
-    const today = new Date();
-    return formatDateToISO(today);
-  }
-  function getDefaultStartDate(): string {
-    const today = new Date();
-    today.setDate(today.getDate() - 6); // 7-day range
-    return formatDateToISO(today);
-  }
-
-  function formatDateToISO(dateObj: Date): string {
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const day = String(dateObj.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  function formatDateForDisplay(dateStr: string): string {
-    const [year, month, day] = dateStr.split("-");
-    return `${day}/${month}/${year}`;
-  }
-
-  const onStartDatePress = useCallback(() => setShowStartPicker(true), []);
-  const onEndDatePress = useCallback(() => setShowEndPicker(true), []);
-
-  const onStartDateChange = useCallback((event: any, selectedDate?: Date) => {
-    setShowStartPicker(false);
-    if (selectedDate) {
-      setStartDate(formatDateToISO(selectedDate));
-    }
-  }, []);
-
-  const onEndDateChange = useCallback((event: any, selectedDate?: Date) => {
-    setShowEndPicker(false);
-    if (selectedDate) {
-      setEndDate(formatDateToISO(selectedDate));
-    }
-  }, []);
+  const [symptoms, setSymptoms] = useState<
+    Array<{ date: string; note: string; severity?: string; medicineName?: string }>
+  >([]);
 
   const fetchMedicationReport = useCallback(async () => {
     setLoading(true);
-    const rangeLabel = `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
+    const rangeLabel = `${formatDateForDisplay(startDate)} – ${formatDateForDisplay(endDate)}`;
     setDateRangeLabel(rangeLabel);
 
     try {
-      const user = await account.get();
+      let patientId: string | null = null;
+      try {
+        const user = await account.get();
+        patientId = user.$id;
+        const scope = await resolvePatientScope();
+        if (scope?.patientId) patientId = scope.patientId;
+      } catch {
+        setTaken([]);
+        setMissed([]);
+        setAdherence(0);
+        setSymptoms([]);
+        Toast.show({
+          type: 'info',
+          text1: 'Sign in required',
+          text2: 'Log in to view adherence reports.',
+        });
+        return;
+      }
 
-      const res = await database.listDocuments(
-        config.db,
-        config.col.reminders,
-        [
-          Query.equal("userId", user.$id),
-          Query.greaterThanEqual("date", startDate),
-          Query.lessThanEqual("date", endDate),
-          Query.orderDesc("date"),
-        ]
-      );
+      const res = await database.listDocuments(config.db, config.col.reminders, [
+        Query.equal('userId', patientId!),
+        Query.greaterThanEqual('date', startDate),
+        Query.lessThanEqual('date', endDate),
+        Query.orderDesc('date'),
+        Query.limit(200),
+      ]);
 
       const docs = res.documents;
       const takenDocs = docs
         .filter((doc: any) => doc.taken === true)
         .map((doc: any) => ({
           name: doc.medicineName,
-          dose: doc.medicines?.frequency || "N/A",
+          dose: doc.medicines?.frequency || 'N/A',
         }));
       const missedDocs = docs
         .filter((doc: any) => doc.taken === false)
         .map((doc: any) => ({
           name: doc.medicineName,
-          dose: doc.medicines?.frequency || "N/A",
+          dose: doc.medicines?.frequency || 'N/A',
         }));
 
       const total = docs.length;
-      const ratio = total > 0 ? (takenDocs.length / total) * 100 : 0;
-      setAdherence(Math.round(ratio));
-
+      setAdherence(total > 0 ? Math.round((takenDocs.length / total) * 100) : 0);
       setTaken(takenDocs);
       setMissed(missedDocs);
 
+      try {
+        const sym = await database.listDocuments(config.db, config.col.symptoms, [
+          Query.equal('patientId', patientId!),
+          Query.greaterThanEqual('date', startDate),
+          Query.lessThanEqual('date', endDate),
+          Query.orderDesc('date'),
+          Query.limit(100),
+        ]);
+        setSymptoms(
+          sym.documents.map((d: any) => ({
+            date: d.date,
+            note: d.note,
+            severity: d.severity,
+            medicineName: d.medicineName,
+          }))
+        );
+      } catch {
+        setSymptoms([]);
+      }
+
       if (docs.length === 0) {
         Toast.show({
-          type: "info",
-          text1: "ℹ️ No Data",
-          text2: "No medication data available in the selected range.",
+          type: 'info',
+          text1: 'No data',
+          text2: 'No medication data in this range.',
         });
       }
     } catch (err) {
-      console.error("Fetch error:", err);
-      Toast.show({
-        type: "error",
-        text1: "❌ Error",
-        text2: "Failed to fetch medication report.",
-      });
+      console.error(err);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to fetch report.' });
     } finally {
       setLoading(false);
     }
@@ -139,100 +150,80 @@ export default function MedicineReportHistory() {
   }, [fetchMedicationReport]);
 
   const generatePDF = useCallback(async () => {
+    const symptomHtml = symptoms.length
+      ? symptoms
+          .map(
+            (s) =>
+              `<li><strong>${s.date}</strong>${s.medicineName ? ` · ${s.medicineName}` : ''} (${s.severity || 'n/a'}): ${s.note}</li>`
+          )
+          .join('')
+      : '<li>None logged</li>';
+
     const html = `
       <html>
-        <body style="font-family: Arial; padding: 20px;">
-          <h1 style="color: #6e4b5e;">Medication Report</h1>
-          <p><strong>Date Range:</strong> ${dateRangeLabel}</p>
-          <h2 style="color: green;">Taken Medications</h2>
-          <ul>
-            ${taken.map((med) => `<li>${med.name} - ${med.dose} dose(s)</li>`).join("")}
-          </ul>
-          <h2 style="color: red;">Missed Medications</h2>
-          <ul>
-            ${missed.map((med) => `<li>${med.name} - ${med.dose} dose(s)</li>`).join("")}
-          </ul>
-          <h2>Adherence</h2>
-          <p>${adherence}% adherence</p>
+        <body style="font-family: Arial; padding: 20px; color: #1A2332;">
+          <h1 style="color: #1E3A5F;">MedRem · Doctor export pack</h1>
+          <p><strong>Date range:</strong> ${dateRangeLabel}</p>
+          <h2 style="color: #3D7EA6;">Taken</h2>
+          <ul>${taken.map((m) => `<li>${m.name} — ${m.dose}</li>`).join('') || '<li>None</li>'}</ul>
+          <h2 style="color: #C45C5C;">Missed</h2>
+          <ul>${missed.map((m) => `<li>${m.name} — ${m.dose}</li>`).join('') || '<li>None</li>'}</ul>
+          <h2 style="color: #1E3A5F;">Adherence</h2>
+          <p style="font-size: 24px; font-weight: bold;">${adherence}%</p>
+          <h2 style="color: #1E3A5F;">Symptom log</h2>
+          <ul>${symptomHtml}</ul>
+          <p style="margin-top:24px;color:#6B7280;font-size:12px;">Generated by MedRem for clinical review. Not a medical diagnosis.</p>
         </body>
       </html>
     `;
-
     try {
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri);
       await FileSystem.deleteAsync(uri, { idempotent: true });
-      Toast.show({
-        type: "success",
-        text1: "✅ PDF Exported",
-        text2: "Report has been exported successfully.",
-      });
+      Toast.show({ type: 'success', text1: 'Doctor pack exported' });
     } catch (error) {
-      console.error("PDF generation error:", error);
-      Toast.show({
-        type: "error",
-        text1: "❌ Error",
-        text2: "Failed to export report as PDF.",
-      });
+      console.error(error);
+      Toast.show({ type: 'error', text1: 'Export failed' });
     }
-  }, [dateRangeLabel, taken, missed, adherence]);
-
-  const renderMedication = useCallback(
-    (name: string, dose: number | string, isTaken: boolean, key: number) => (
-      <View style={styles.medicationRow} key={`${name}-${key}`}>
-        <Text style={styles.medicationText}>
-          {name} – {dose} dose(s)
-        </Text>
-        {isTaken ? (
-          <MaterialIcons name="check-circle" size={20} color="green" />
-        ) : (
-          <MaterialIcons name="cancel" size={20} color="red" />
-        )}
-      </View>
-    ),
-    []
-  );
+  }, [dateRangeLabel, taken, missed, adherence, symptoms]);
 
   if (loading) {
     return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#6e4b5e" />
-        <Text>Loading your medication report...</Text>
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ color: colors.textMuted, marginTop: 8 }}>Loading report…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="time-outline" size={24} color="#fff" />
-        </View>
-        <Text style={styles.headerText}>Medication History & Reports</Text>
-      </View>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={screen.brand}>INSIGHTS</Text>
+        <Text style={screen.title}>Reports</Text>
 
-      <View style={styles.dateRangeCard}>
-        <View style={styles.dateRangeRow}>
-          <TouchableOpacity onPress={onStartDatePress} style={styles.dateButton}>
-            <Text style={styles.dateButtonText}>
-              {formatDateForDisplay(startDate)}
-            </Text>
+        <View style={styles.rangeCard}>
+          <TouchableOpacity style={styles.dateChip} onPress={() => setShowStartPicker(true)}>
+            <Text style={styles.dateChipText}>{formatDateForDisplay(startDate)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onEndDatePress} style={styles.dateButton}>
-            <Text style={styles.dateButtonText}>
-              {formatDateForDisplay(endDate)}
-            </Text>
+          <Text style={{ color: colors.textMuted }}>—</Text>
+          <TouchableOpacity style={styles.dateChip} onPress={() => setShowEndPicker(true)}>
+            <Text style={styles.dateChipText}>{formatDateForDisplay(endDate)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={fetchMedicationReport} style={styles.fetchButton}>
-            <Text style={styles.fetchButtonText}>Generate</Text>
+          <TouchableOpacity style={styles.genBtn} onPress={fetchMedicationReport}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
           </TouchableOpacity>
         </View>
+
         {showStartPicker && (
           <DateTimePicker
             value={new Date(startDate)}
             mode="date"
             display="default"
-            onChange={onStartDateChange}
+            onChange={(_, d) => {
+              setShowStartPicker(false);
+              if (d) setStartDate(formatDateToISO(d));
+            }}
           />
         )}
         {showEndPicker && (
@@ -240,176 +231,195 @@ export default function MedicineReportHistory() {
             value={new Date(endDate)}
             mode="date"
             display="default"
-            onChange={onEndDateChange}
+            onChange={(_, d) => {
+              setShowEndPicker(false);
+              if (d) setEndDate(formatDateToISO(d));
+            }}
           />
         )}
-      </View>
 
-      <View style={styles.dateRangeBox}>
-        <FontAwesome5 name="calendar-alt" size={18} color="#6e4b5e" />
-        <Text style={styles.dateRangeText}> Range: {dateRangeLabel}</Text>
-      </View>
+        <FadeBlock style={styles.adherenceHero}>
+          <SoftOrbs />
+          <ProgressRing
+            progress={adherence}
+            size={110}
+            stroke={10}
+            label={`${adherence}%`}
+            sublabel="done"
+            trackColor="rgba(255,255,255,0.2)"
+            fillColor={colors.accent}
+            labelColor={colors.white}
+          />
+          <View style={styles.adherenceSide}>
+            <View style={styles.miniStat}>
+              <Text style={styles.miniStatNum}>{taken.length}</Text>
+              <Ionicons name="checkmark-circle" size={16} color={colors.accentSoft} />
+            </View>
+            <View style={styles.miniStat}>
+              <Text style={styles.miniStatNum}>{missed.length}</Text>
+              <Ionicons name="close-circle" size={16} color={colors.accentSoft} />
+            </View>
+          </View>
+        </FadeBlock>
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Taken Medications</Text>
-          <Text style={styles.statusTitle}>Taken</Text>
+        <View style={screen.card}>
+          <Text style={styles.sectionTitle}>Taken</Text>
+          {taken.length ? (
+            taken.map((med, i) => (
+              <View style={styles.row} key={`t-${i}`}>
+                <MedHintIcon size={32} />
+                <Text style={[styles.medText, { marginLeft: 10, flex: 1 }]} numberOfLines={1}>
+                  {med.name}
+                </Text>
+                <View style={styles.doseTag}>
+                  <Text style={styles.doseTagText}>{med.dose}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.empty}>—</Text>
+          )}
         </View>
-        {taken.length > 0 ? (
-          taken.map((med, index) => renderMedication(med.name, med.dose, true, index))
-        ) : (
-          <Text style={styles.medicationText}>No data available</Text>
-        )}
-      </View>
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Missed Medications</Text>
-          <Text style={styles.statusTitle}>Missed</Text>
+        <View style={screen.card}>
+          <Text style={styles.sectionTitle}>Missed</Text>
+          {missed.length ? (
+            missed.map((med, i) => (
+              <View style={styles.row} key={`m-${i}`}>
+                <MedHintIcon size={32} critical />
+                <Text style={[styles.medText, { marginLeft: 10, flex: 1 }]} numberOfLines={1}>
+                  {med.name}
+                </Text>
+                <View style={styles.doseTag}>
+                  <Text style={styles.doseTagText}>{med.dose}</Text>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.empty}>—</Text>
+          )}
         </View>
-        {missed.length > 0 ? (
-          missed.map((med, index) => renderMedication(med.name, med.dose, false, index))
-        ) : (
-          <Text style={styles.medicationText}>No data available</Text>
-        )}
-      </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Adherence Report</Text>
-        <Text style={styles.reportText}>Adherence: {adherence}%</Text>
-      </View>
+        <View style={screen.card}>
+          <Text style={styles.sectionTitle}>Symptoms</Text>
+          {symptoms.length ? (
+            symptoms.map((s, i) => (
+              <View style={styles.row} key={`s-${i}`}>
+                <View style={styles.symptomOrb}>
+                  <Ionicons name="pulse" size={14} color={colors.accent} />
+                </View>
+                <Text style={[styles.medText, { marginLeft: 10 }]} numberOfLines={2}>
+                  {s.date}
+                  {s.medicineName ? ` · ${s.medicineName}` : ''}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.empty}>—</Text>
+          )}
+        </View>
 
-      <TouchableOpacity style={styles.exportButton} onPress={generatePDF}>
-        <Text style={styles.exportButtonText}>Export Report (PDF)</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity
+          style={[screen.primaryBtn, { backgroundColor: colors.primarySoft, marginBottom: 10 }]}
+          onPress={() => router.push('/LogSymptom')}
+        >
+          <Text style={screen.primaryBtnText}>Log symptom</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={screen.primaryBtn} onPress={generatePDF}>
+          <Text style={screen.primaryBtnText}>Export PDF</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  loaderContainer: {
+  safe: { flex: 1, backgroundColor: colors.bg },
+  loader: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fce4ec",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
   },
-  container: {
-    flexGrow: 1,
-    backgroundColor: "#fce4ec",
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+  content: { padding: spacing.lg, paddingBottom: 48 },
+  rangeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.md,
   },
-  header: {
-    flexDirection: "row",
-    backgroundColor: "#f8bbd0",
-    borderRadius: 10,
-    alignItems: "center",
-    padding: 10,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#d47fa6",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  headerText: {
-    color: "#6e4b5e",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  dateRangeCard: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 15,
-    elevation: 2,
-  },
-  dateRangeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  dateButton: {
-    backgroundColor: "#fce4ec",
-    borderRadius: 8,
-    padding: 8,
+  dateChip: {
     flex: 1,
-    marginRight: 5,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
   },
-  dateButtonText: {
-    color: "#6e4b5e",
-    fontWeight: "bold",
+  dateChipText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+  genBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.sm,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  fetchButton: {
-    backgroundColor: "#d47fa6",
-    borderRadius: 8,
-    padding: 8,
+  genBtnText: { color: colors.white, fontWeight: '700' },
+  adherenceHero: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  fetchButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
+  adherenceSide: { gap: 12, zIndex: 1 },
+  miniStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
   },
-  dateRangeBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 15,
-    elevation: 2,
-  },
-  dateRangeText: {
-    marginLeft: 8,
-    color: "#6e4b5e",
-    fontWeight: "bold",
-  },
-  sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    elevation: 2,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
+  miniStatNum: { color: colors.white, fontWeight: '800', fontSize: 18 },
+  adherencePct: { color: colors.white, fontSize: 40, fontWeight: '800' },
+  adherenceLabel: { color: colors.accentSoft, marginTop: 4 },
   sectionTitle: {
-    fontWeight: "bold",
-    color: "#6e4b5e",
+    fontWeight: '800',
+    color: colors.primary,
+    marginBottom: 10,
     fontSize: 15,
   },
-  statusTitle: {
-    fontWeight: "bold",
-    color: "#6e4b5e",
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  medicationRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: 4,
+  medText: { color: colors.text, fontWeight: '600' },
+  doseTag: {
+    backgroundColor: colors.cobaltGlow,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
   },
-  medicationText: {
-    color: "#333",
+  doseTagText: { color: colors.primarySoft, fontWeight: '700', fontSize: 12 },
+  symptomOrb: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.sandGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reportText: {
-    marginTop: 5,
-    color: "#555",
-  },
-  exportButton: {
-    backgroundColor: "#f8bbd0",
-    borderRadius: 10,
-    padding: 15,
-    alignItems: "center",
-    elevation: 2,
-  },
-  exportButtonText: {
-    color: "#6e4b5e",
-    fontWeight: "bold",
-  },
+  empty: { color: colors.textMuted },
 });

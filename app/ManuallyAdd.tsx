@@ -9,16 +9,23 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Switch,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
-const { config, database, account } = require("../config/appwriteConfig");
-import { scheduleReminders } from './utils/scheduleReminders';
-import { ID, Permission, Role } from 'appwrite';
+import { Ionicons } from '@expo/vector-icons';
+import { scheduleReminders } from './_utils/scheduleReminders';
+import { ID } from 'appwrite';
+import { config, database, account } from '../config/appwriteConfig';
+import { colors, radii, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
+import { useAuth } from './_context/authContext';
+import { sharedPermissions } from './_utils/patientScope';
+import { dosesPerDay } from './_utils/dates';
 
 type MedicationData = {
   medicineName: string;
@@ -31,28 +38,35 @@ type MedicationData = {
   notes?: string;
   repeatSchedule: boolean;
   totalRemindersLeft?: string;
+  refillThreshold?: string;
+  isCritical?: boolean;
+  instructions?: string;
 };
 
 type Errors = Partial<Record<keyof MedicationData, string>>;
 
 const formatTime = (date: Date) =>
-  date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); // e.g., "08:00" in 24hr
+  date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const ManuallyAdd: React.FC = () => {
   const params = useLocalSearchParams();
-  const navigation = useNavigation<NativeStackNavigationProp<any>>();
+  const router = useRouter();
+  const { scope, refreshScope } = useAuth();
 
   const [form, setForm] = useState<MedicationData>({
-    medicineName: params.medicineName || '',
-    medicineType: params.medicineType || '',
-    quantity: params.quantity || '',
-    frequency: params.frequency || '',
+    medicineName: (params.medicineName as string) || '',
+    medicineType: (params.medicineType as string) || '',
+    quantity: (params.quantity as string) || '',
+    frequency: (params.frequency as string) || '',
     time1: '',
     time2: '',
     time3: '',
     notes: '',
     repeatSchedule: false,
     totalRemindersLeft: '',
+    refillThreshold: '5',
+    isCritical: false,
+    instructions: '',
   });
   const [errors, setErrors] = useState<Errors>({});
   const [isTime1Visible, setTime1Visible] = useState(false);
@@ -92,44 +106,80 @@ const ManuallyAdd: React.FC = () => {
   const handleSave = useCallback(async () => {
     try {
       const user = await account.get();
+      let patientId = scope?.patientId || user.$id;
+      if (!scope) {
+        const s = await refreshScope();
+        patientId = s?.patientId || user.$id;
+      }
+
       if (!validateForm()) {
         Toast.show({
           type: 'error',
-          text1: '⚠️ Validation Error',
+          text1: 'Validation error',
           text2: 'Please fix the errors before saving.',
         });
         return;
       }
 
-      let remindersMultiplier = 1;
-      if (form.frequency === 'Twice a day') {
-        remindersMultiplier = 2;
-      } else if (form.frequency === 'Three times a day') {
-        remindersMultiplier = 3;
-      }
-
-      let totalRemindersLeft = remindersMultiplier;
+      const multiplier = dosesPerDay(form.frequency);
+      let numberOfDays = 1;
       if (form.repeatSchedule && form.totalRemindersLeft) {
-        totalRemindersLeft = remindersMultiplier * parseInt(form.totalRemindersLeft, 10);
+        numberOfDays = parseInt(form.totalRemindersLeft, 10);
+      } else if (form.frequency === 'Everyday') {
+        numberOfDays = 30;
+      } else if (form.frequency === 'Weekly') {
+        numberOfDays = 56; // informational; scheduleReminders handles weekly
       }
 
-      const documentData = {
-        ...form,
+      const totalRemindersLeft = multiplier * (form.repeatSchedule ? numberOfDays : 1);
+      const qty = parseInt(form.quantity, 10) || 0;
+
+      const documentData: Record<string, unknown> = {
+        medicineName: form.medicineName,
+        medicineType: form.medicineType,
+        quantity: form.quantity,
+        frequency: form.frequency,
+        time1: form.time1,
+        time2: form.time2 || '',
+        time3: form.time3 || '',
+        notes: form.notes || '',
+        repeatSchedule: form.repeatSchedule,
         totalRemindersLeft,
+        patientId,
+        quantityRemaining: qty,
+        refillThreshold: parseInt(form.refillThreshold || '5', 10),
+        isCritical: !!form.isCritical,
+        instructions: form.instructions || '',
       };
 
-      const medicineDoc = await database.createDocument(
-        config.db,
-        config.col.medicines,
-        ID.unique(),
-        documentData,
-        [
-          Permission.read(Role.user(user.$id)),
-          Permission.write(Role.user(user.$id)),
-        ]
-      );
+      let medicineDoc;
+      try {
+        medicineDoc = await database.createDocument(
+          config.db,
+          config.col.medicines,
+          ID.unique(),
+          documentData,
+          sharedPermissions(patientId)
+        );
+      } catch {
+        // Fallback without optional attrs if Console schema not updated yet
+        const {
+          quantityRemaining,
+          refillThreshold,
+          patientId: _p,
+          isCritical: _c,
+          instructions: _i,
+          ...basic
+        } = documentData;
+        medicineDoc = await database.createDocument(
+          config.db,
+          config.col.medicines,
+          ID.unique(),
+          basic,
+          sharedPermissions(patientId)
+        );
+      }
 
-      // Build times array based on frequency (filtering out any empty strings)
       const times = [form.time1];
       if (form.frequency === 'Twice a day' || form.frequency === 'Three times a day') {
         times.push(form.time2 || '');
@@ -137,29 +187,34 @@ const ManuallyAdd: React.FC = () => {
       if (form.frequency === 'Three times a day') {
         times.push(form.time3 || '');
       }
-      const validTimes = times.filter(Boolean);
 
-      // Schedule reminders
-      await scheduleReminders(validTimes, form.medicineName, form.notes || '', medicineDoc.$id);
+      const result = await scheduleReminders({
+        times: times.filter(Boolean),
+        medicineName: form.medicineName,
+        description: form.notes || '',
+        medicineId: medicineDoc.$id,
+        patientId,
+        frequency: form.frequency,
+        repeatSchedule: form.repeatSchedule,
+        numberOfDays: form.repeatSchedule ? numberOfDays : undefined,
+      });
 
       Toast.show({
         type: 'success',
-        text1: '✅ Success',
-        text2: 'Medication saved successfully!',
+        text1: 'Medication saved',
+        text2: `Scheduled ${result.doses} reminder${result.doses === 1 ? '' : 's'}.`,
       });
-      navigation.goBack();
+      router.replace('/(tabs)/meds');
     } catch (err) {
       console.error(err);
       Toast.show({
         type: 'error',
-        text1: '❌ Error',
+        text1: 'Error',
         text2: 'Failed to save medication.',
       });
     }
-  }, [form, navigation, validateForm]);
+  }, [form, scope, refreshScope, validateForm, router]);
 
-  // Determine available frequency options based on the repeatSchedule flag.
-  // If repeatSchedule is true (Yes), hide "Everyday" and "Weekly".
   const frequencyOptions = form.repeatSchedule
     ? ['Once a day', 'Twice a day', 'Three times a day']
     : ['Once a day', 'Twice a day', 'Three times a day', 'Everyday', 'Weekly'];
@@ -167,28 +222,38 @@ const ManuallyAdd: React.FC = () => {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Add Medication</Text>
+        <SafeAreaView style={styles.safe}>
+          <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={22} color={colors.white} />
+          </TouchableOpacity>
 
-          {/* Medicine Name */}
-          <Text style={styles.label}>Medicine Name</Text>
+          <ScrollView
+            style={styles.sheet}
+            contentContainerStyle={styles.scrollContainer}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={screen.brand}>MedRem</Text>
+            <Text style={styles.title}>Add medication</Text>
+            <Text style={screen.subtitle}>Schedule doses across your course</Text>
+
+          <Text style={styles.label}>Medicine name</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter medicine name"
+            placeholderTextColor={colors.textMuted}
             value={form.medicineName}
             onChangeText={(text) => handleChange('medicineName', text)}
           />
           {errors.medicineName && <Text style={styles.error}>{errors.medicineName}</Text>}
 
-          {/* Medicine Type */}
-          <Text style={styles.label}>Medicine Type</Text>
+          <Text style={styles.label}>Medicine type</Text>
           <View style={styles.pickerContainer}>
             <Picker
               selectedValue={form.medicineType}
               onValueChange={(value) => handleChange('medicineType', value)}
               style={styles.picker}
             >
-              <Picker.Item label="Select Type" value="" />
+              <Picker.Item label="Select type" value="" />
               <Picker.Item label="Pill" value="Pill" />
               <Picker.Item label="Syrup" value="Syrup" />
               <Picker.Item label="Injection" value="Injection" />
@@ -196,24 +261,59 @@ const ManuallyAdd: React.FC = () => {
           </View>
           {errors.medicineType && <Text style={styles.error}>{errors.medicineType}</Text>}
 
-          <Text style={styles.label}>Quantity</Text>
+          <Text style={styles.label}>Quantity (stock)</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter quantity"
+            placeholderTextColor={colors.textMuted}
             keyboardType="numeric"
             value={form.quantity}
             onChangeText={(text) => handleChange('quantity', text)}
           />
           {errors.quantity && <Text style={styles.error}>{errors.quantity}</Text>}
 
-          <Text style={styles.label}>Repeat Medicine Schedule?</Text>
+          <Text style={styles.label}>Refill alert when stock ≤</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={form.refillThreshold}
+            onChangeText={(text) => handleChange('refillThreshold', text)}
+          />
+
+          <View style={styles.criticalRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.label}>Critical dose</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: -8, marginBottom: 8 }}>
+                Faster caregiver escalation if missed
+              </Text>
+            </View>
+            <Switch
+              value={!!form.isCritical}
+              onValueChange={(v) => handleChange('isCritical', v)}
+              trackColor={{ true: colors.accentSoft, false: colors.border }}
+              thumbColor={form.isCritical ? colors.danger : '#f4f3f4'}
+            />
+          </View>
+
+          <Text style={styles.label}>Instructions (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="With food / empty stomach"
+            placeholderTextColor={colors.textMuted}
+            value={form.instructions}
+            onChangeText={(text) => handleChange('instructions', text)}
+          />
+
+          <Text style={styles.label}>Repeat schedule?</Text>
           <View style={styles.buttonContainer}>
             {['Yes', 'No'].map((option) => (
               <TouchableOpacity
                 key={option}
                 style={[
                   styles.frequencyButton,
-                  ((option === 'Yes' && form.repeatSchedule) || (option === 'No' && !form.repeatSchedule)) && styles.selectedButton
+                  ((option === 'Yes' && form.repeatSchedule) ||
+                    (option === 'No' && !form.repeatSchedule)) &&
+                    styles.selectedButton,
                 ]}
                 onPress={() => handleChange('repeatSchedule', option === 'Yes')}
               >
@@ -224,22 +324,18 @@ const ManuallyAdd: React.FC = () => {
 
           {form.repeatSchedule && (
             <>
-              <Text style={styles.label}>Number of Days</Text>
+              <Text style={styles.label}>Number of days</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter number of days"
+                placeholder="e.g. 7"
+                placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={form.totalRemindersLeft}
-                onChangeText={(text) => {
-                  const num = parseInt(text, 10);
-                  if (num < 0) {
-                    handleChange('totalRemindersLeft', '0');
-                  } else {
-                    handleChange('totalRemindersLeft', text);
-                  }
-                }}
+                onChangeText={(text) => handleChange('totalRemindersLeft', text)}
               />
-              {errors.totalRemindersLeft && <Text style={styles.error}>{errors.totalRemindersLeft}</Text>}
+              {errors.totalRemindersLeft && (
+                <Text style={styles.error}>{errors.totalRemindersLeft}</Text>
+              )}
             </>
           )}
 
@@ -267,8 +363,7 @@ const ManuallyAdd: React.FC = () => {
                 isVisible={isTime1Visible}
                 mode="time"
                 onConfirm={(date) => {
-                  const formatted = formatTime(date);
-                  handleChange('time1', formatted);
+                  handleChange('time1', formatTime(date));
                   setTime1Visible(false);
                 }}
                 onCancel={() => setTime1Visible(false)}
@@ -287,8 +382,7 @@ const ManuallyAdd: React.FC = () => {
                 isVisible={isTime2Visible}
                 mode="time"
                 onConfirm={(date) => {
-                  const formatted = formatTime(date);
-                  handleChange('time2', formatted);
+                  handleChange('time2', formatTime(date));
                   setTime2Visible(false);
                 }}
                 onCancel={() => setTime2Visible(false)}
@@ -307,8 +401,7 @@ const ManuallyAdd: React.FC = () => {
                 isVisible={isTime3Visible}
                 mode="time"
                 onConfirm={(date) => {
-                  const formatted = formatTime(date);
-                  handleChange('time3', formatted);
+                  handleChange('time3', formatTime(date));
                   setTime3Visible(false);
                 }}
                 onCancel={() => setTime3Visible(false)}
@@ -317,91 +410,107 @@ const ManuallyAdd: React.FC = () => {
             </>
           )}
 
-          <Text style={styles.label}>Notes (Optional)</Text>
+          <Text style={styles.label}>Notes (optional)</Text>
           <TextInput
             style={styles.input}
-            placeholder="Additional instructions or notes"
+            placeholder="Additional instructions"
+            placeholderTextColor={colors.textMuted}
             value={form.notes}
             onChangeText={(text) => handleChange('notes', text)}
             multiline
           />
-        </ScrollView>
-      </TouchableWithoutFeedback>
+          </ScrollView>
 
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.buttonText}>Save</Text>
-      </TouchableOpacity>
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.primary },
+  back: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  sheet: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+  },
   scrollContainer: {
     flexGrow: 1,
-    padding: 20,
-    backgroundColor: '#EDEDED',
+    padding: spacing.lg,
+    paddingBottom: 24,
+  },
+  criticalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  footer: {
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 4,
+    color: colors.primary,
   },
   label: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 5,
+    marginBottom: 6,
+    color: colors.text,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    borderColor: '#ff66b2',
-    backgroundColor: 'white',
-    marginBottom: 10,
+    borderRadius: radii.sm,
+    padding: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+    color: colors.text,
   },
   pickerContainer: {
     borderWidth: 1,
-    borderRadius: 8,
-    borderColor: '#ff66b2',
-    marginBottom: 10,
-    backgroundColor: 'white',
+    borderRadius: radii.sm,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
   },
-  picker: {
-    height: 50,
-    width: '100%',
-  },
+  picker: { height: 50, width: '100%' },
   buttonContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   frequencyButton: {
     padding: 10,
-    margin: 5,
+    margin: 4,
     borderWidth: 1,
-    borderRadius: 8,
-    borderColor: '#ff66b2',
+    borderRadius: radii.sm,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   selectedButton: {
-    backgroundColor: '#f8c6d2',
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
   },
-  buttonText: {
-    fontSize: 17,
-    textAlign: 'center',
-  },
+  buttonText: { fontSize: 15, textAlign: 'center', color: colors.text },
   saveButton: {
-    backgroundColor: '#f8c6d2',
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    padding: 16,
+    borderRadius: radii.md,
     alignItems: 'center',
-    margin: 10,
   },
-  error: {
-    color: 'red',
-    fontSize: 13,
-    marginBottom: 10,
-  },
+  saveButtonText: { fontSize: 17, fontWeight: '700', color: colors.white },
+  error: { color: colors.danger, fontSize: 13, marginBottom: 8 },
 });
 
 export default ManuallyAdd;
