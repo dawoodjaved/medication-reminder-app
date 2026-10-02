@@ -1,109 +1,76 @@
 import React from 'react';
-import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { Text, Link } from './components/customizableFontElements';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Text } from './_components/customizableFontElements';
+import { colors, radii, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
 
 const AddMedicine = () => {
+  const router = useRouter();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Image source={require('../assets/images/AddMed.png')} style={styles.logo} />
-        <Text style={styles.headerText}>Add new Medicine</Text>
-      </View>
-      <View style={styles.formContainer}>
-        <TouchableOpacity 
-          style={styles.scanButton} 
-         >
-          <View>
-            <Link href={"/ScanMedicineScreen"} style={styles.scanText}>Scan via Camera</Link>
+    <SafeAreaView style={styles.safe}>
+      <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={22} color={colors.white} />
+      </TouchableOpacity>
+
+      <View style={screen.sheetGrow}>
+        <Text style={screen.brand}>MedRem</Text>
+        <Text style={screen.title}>Add medicine</Text>
+        <Text style={screen.subtitle}>Scan a label or enter details manually.</Text>
+
+        <TouchableOpacity style={styles.card} onPress={() => router.push('/ScanMedicineScreen')}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="camera-outline" size={28} color={colors.primary} />
           </View>
-        </TouchableOpacity>
-    
-        <TouchableOpacity style={styles.addButton}>
-          <View>
-            <Link href={"/ManuallyAdd"} style={styles.addButtonText}>Add Manually</Link>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Scan via camera</Text>
+            <Text style={styles.cardMeta}>OCR from photo or gallery</Text>
           </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.card} onPress={() => router.push('/ManuallyAdd')}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="create-outline" size={28} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Add manually</Text>
+            <Text style={styles.cardMeta}>Name, dose times, schedule</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
-//Styles
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#e5e0e5',
+  safe: { flex: 1, backgroundColor: colors.primary },
+  back: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  card: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
   },
-  header: {
-    width: '100%',
-    height:'30%',
-    backgroundColor: '#f8c6d2',
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
-    paddingVertical: 30,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 70,
-    borderTopLeftRadius: 70
+    justifyContent: 'center',
   },
-  logo: {
-    width: 70,
-    height: 70,
-    marginBottom: 10,
-    right:120
-  },
-  headerText: {
-    fontWeight: 'bold',
-    color: '#4d004d',
-    right:60
-  },
-  formContainer: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#EBEBEB',
-    marginTop: -3,
-    padding: 22,
-    borderRadius: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  label: {
-    fontWeight: 'bold',
-    color: '#4d004d',
-    marginBottom: 5,
-  },
-  scanButton: {
-    backgroundColor: '#f8c6d2',
-    padding: 22,
-    top: '18%',
-    width: '100%',
-    marginBottom: 4,
-    alignSelf: 'flex-start',
-    borderRadius: 10,
-    paddingHorizontal: 35,
-    
-  },
-  scanText: {
-    fontWeight: 'bold',
-    color: '#4d004d',
-    left: 50,
-  },
-  addButton: {
-    backgroundColor: '#f8c6d2',
-    padding: 22,
-    top: '18%',
-    width: '100%',
-    marginTop: 15,
-    marginBottom: 4,
-    alignSelf: 'flex-start',
-    borderRadius: 10,
-    paddingHorizontal: 35,
-  },
-  addButtonText: {
-    fontWeight: 'bold',
-    color: '#4d004d',
-    left: 70,
-  },
+  cardTitle: { fontWeight: '700', color: colors.text, fontSize: 16 },
+  cardMeta: { color: colors.textMuted, marginTop: 2 },
 });
 
 export default AddMedicine;

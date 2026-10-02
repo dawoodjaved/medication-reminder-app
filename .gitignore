@@ -1,1 +1,17 @@
 node_modules
+
+# Expo / local env
+.expo/
+expo-env.d.ts
+.env
+.env.local
+*.pem
+
+# Local engineering notes (public docs live in README.md only)
+PRODUCT.md
+APP_GUIDE.md
+
+# Large doctor dumps (regenerate via scripts/clean_doctors_csv.py)
+assets/pakistan_doctors_enriched.csv
+assets/pakistan_doctors_clean.csv
+assets/pakistan_doctors_clean.jsonl

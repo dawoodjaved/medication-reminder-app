@@ -1,163 +1,226 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 import {
   View,
   TouchableOpacity,
   StyleSheet,
-  ImageBackground,
   ActivityIndicator,
-} from "react-native";
-import { Text, Link } from "./components/customizableFontElements";
-import { useRouter } from "expo-router";
-import { config, database } from "@/config/appwriteConfig";
-import { Query } from "react-native-appwrite";
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from './_components/customizableFontElements';
+import { useRouter } from 'expo-router';
+import { Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radii, spacing } from './_theme/colors';
+import { SoftOrbs, PillGlyph, FadeBlock } from './_theme/visuals';
+import { useAuth } from './_context/authContext';
 
-const localImage = require("../assets/images/background.jpg");
-const localLogo = require("../assets/images/logo.png");
-
-const { account } = require("../config/appwriteConfig");
+async function authenticateBiometric(promptMessage: string) {
+  if (Platform.OS === 'web') return { success: true };
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const LocalAuthentication = require('expo-local-authentication');
+  return LocalAuthentication.authenticateAsync({ promptMessage, fallbackLabel: 'Use passcode' });
+}
 
 const HomeScreen = () => {
   const router = useRouter();
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const { scope, loading, refreshScope, onboardingDone, biometricEnabled } = useAuth();
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const session = await account.get();
-        console.log("User session found:", session);
+    if (loading) return;
 
-        
-        const caregiverList = await database.listDocuments(
-        config.db,
-        config.col.caregivers,
-        [Query.equal("phoneNumber", session?.phoneNumber.trim())]
-      );
+    const boot = async () => {
+      if (!scope) return;
 
-      caregiverList.total === 0 ? router.replace("/CareGiverMainScreen") : router.replace("/MainScreen");
-      } catch (error) {
-        console.log("No active session found:", error.message);
-        setIsCheckingSession(false);
+      if (biometricEnabled && !unlocked) {
+        setUnlocking(true);
+        const result = await authenticateBiometric('Unlock MedRem');
+        setUnlocking(false);
+        if (!result.success) return;
+        setUnlocked(true);
+      }
+
+      if (!onboardingDone && scope.role === 'patient') {
+        router.replace('/Onboarding');
+      } else {
+        router.replace('/(tabs)');
       }
     };
 
-    checkSession();
-  }, []);
+    boot();
+  }, [loading, scope, biometricEnabled, onboardingDone, router, unlocked]);
 
-  if (isCheckingSession) {
+  if (loading || unlocking) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#E75480" />
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (scope && biometricEnabled && !unlocked) {
+    return (
+      <SafeAreaView style={[styles.safe, { justifyContent: 'center', padding: spacing.lg }]}>
+        <SoftOrbs />
+        <Text style={styles.heroBrand}>MedRem</Text>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={async () => {
+            setUnlocking(true);
+            const result = await authenticateBiometric('Unlock MedRem');
+            setUnlocking(false);
+            if (result.success) setUnlocked(true);
+          }}
+        >
+          <Ionicons name="finger-print" size={18} color={colors.white} />
+          <Text style={styles.primaryBtnText}>Unlock</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (scope) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ImageBackground source={localImage} style={styles.background} />
-
-      <View style={styles.card}>
-        <ImageBackground source={localLogo} style={styles.logoPlaceholder} />
-
-        <Text style={styles.title}>Welcome to </Text>
-        <Text style={styles.subtitle}>MedRem</Text>
-        <Text style={styles.description}>Never miss a Med Again</Text>
-
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.signUpButton}>
-            <Link href="/CareGiverLoginScreen" style={styles.buttonText}>
-              Caregiver
-            </Link>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.loginButton}>
-            <Link href="/PhoneLoginScreen" style={styles.buttonText}>
-              User
-            </Link>
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.heroPlane}>
+        <SoftOrbs />
+        <FadeBlock>
+          <View style={styles.logoCircle}>
+            <PillGlyph size={40} color={colors.white} />
+          </View>
+        </FadeBlock>
+        <FadeBlock delay={80}>
+          <Text style={styles.heroBrand}>MedRem</Text>
+        </FadeBlock>
+        <FadeBlock delay={140}>
+          <View style={styles.heroDots}>
+            <View style={[styles.heroDot, { backgroundColor: colors.accent }]} />
+            <View style={[styles.heroDot, { backgroundColor: colors.accentSoft }]} />
+            <View style={[styles.heroDot, { backgroundColor: colors.primarySoft }]} />
+          </View>
+        </FadeBlock>
       </View>
-    </View>
+
+      <FadeBlock delay={180} style={styles.card}>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={() => router.push('/PhoneLoginScreen')}
+        >
+          <Ionicons name="person-outline" size={18} color={colors.white} />
+          <Text style={styles.primaryBtnText}>Patient</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => router.push('/CareGiverLoginScreen')}
+        >
+          <Ionicons name="heart-outline" size={18} color={colors.primary} />
+          <Text style={styles.secondaryBtnText}>Caregiver</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.inviteBtn} onPress={() => router.push('/AcceptInvite')}>
+          <Ionicons name="link-outline" size={18} color={colors.accent} />
+          <Text style={styles.inviteText}>Invite</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => refreshScope()}>
+          <Text style={styles.refresh}>Refresh</Text>
+        </TouchableOpacity>
+      </FadeBlock>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safe: { flex: 1, backgroundColor: colors.primary },
+  loading: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
   },
-  loadingContainer: {
+  heroPlane: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FFF",
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  background: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    top: -50,
-    resizeMode: "cover",
+  logoCircle: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.accentSoft,
+    marginBottom: spacing.md,
   },
+  heroBrand: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: colors.white,
+    letterSpacing: -1,
+    textAlign: 'center',
+  },
+  heroDots: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  heroDot: { width: 8, height: 8, borderRadius: 4 },
   card: {
-    width: "99%",
-    height: "70%",
-    backgroundColor: "#EBEBEB",
-    borderRadius: 20,
-    padding: 20,
-    alignItems: "center",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    top: 115,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+    alignItems: 'center',
   },
-  logoPlaceholder: {
-    width: 115,
-    height: 117,
-    backgroundColor: "#EBEBEB",
-    borderRadius: 50,
-    marginBottom: 10,
-    top: 50,
+  primaryBtn: {
+    width: '100%',
+    backgroundColor: colors.accent,
+    paddingVertical: 16,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
-  title: {
-    fontWeight: "bold",
-    color: "#5A3E85",
-    top: 50,
+  primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  secondaryBtn: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
-  subtitle: {
-    fontWeight: "bold",
-    color: "#5A3E85",
-    marginBottom: 5,
-    top: 50,
+  secondaryBtnText: { color: colors.primary, fontWeight: '700', fontSize: 16 },
+  inviteBtn: {
+    width: '100%',
+    marginTop: spacing.sm,
+    paddingVertical: 14,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
   },
-  description: {
-    color: "#888",
-    marginBottom: 20,
-    top: 60,
-  },
-  buttonContainer: {
-    flexDirection: "row",
-    gap: 40,
-    top: 155,
-  },
-  signUpButton: {
-    backgroundColor: "#E75480",
-    paddingVertical: 10,
-    paddingHorizontal: 27,
-    borderRadius: 20,
-  },
-  loginButton: {
-    backgroundColor: "#E75480",
-    paddingVertical: 10,
-    paddingHorizontal: 27,
-    borderRadius: 20,
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
+  inviteText: { color: colors.accent, fontWeight: '700', fontSize: 15 },
+  refresh: { marginTop: spacing.md, color: colors.textMuted, fontSize: 13 },
 });
 
 export default HomeScreen;

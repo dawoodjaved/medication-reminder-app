@@ -7,42 +7,49 @@ import {
   Keyboard,
   NativeSyntheticEvent,
   TextInputKeyPressEventData,
+  TouchableOpacity,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { account } from '../config/appwriteConfig';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radii, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
+import { useAuth } from './_context/authContext';
+
+const localLogo = require('../assets/images/logo.png');
 
 export default function OtpVerificationScreen() {
   const router = useRouter();
-  const { caregiver, userId } = useLocalSearchParams<{ caregiver: string, userId: string }>();
-
+  const { refreshScope } = useAuth();
+  const { caregiver, userId } = useLocalSearchParams<{ caregiver: string; userId: string }>();
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const inputRefs = useRef<Array<TextInput | null>>([]);
 
-  const handleChange = useCallback((text: string, index: number) => {
-    if (/^\d$/.test(text)) {
-      const newOtp = [...otp];
-      newOtp[index] = text;
-      setOtp(newOtp);
-
-      if (index < 5) {
-        inputRefs.current[index + 1]?.focus();
-      } else {
-        Keyboard.dismiss();
-        confirmVerificationCode(newOtp.join(''));
+  const handleChange = useCallback(
+    (text: string, index: number) => {
+      if (/^\d$/.test(text)) {
+        const next = [...otp];
+        next[index] = text;
+        setOtp(next);
+        if (index < 5) inputRefs.current[index + 1]?.focus();
+        else {
+          Keyboard.dismiss();
+          confirmVerificationCode(next.join(''));
+        }
+      } else if (text === '') {
+        const next = [...otp];
+        next[index] = '';
+        setOtp(next);
       }
-    } else if (text === '') {
-      const newOtp = [...otp];
-      newOtp[index] = '';
-      setOtp(newOtp);
-    }
-  }, [otp]);
+    },
+    [otp]
+  );
 
   const handleKeyPress = useCallback(
-    (
-      e: NativeSyntheticEvent<TextInputKeyPressEventData>,
-      index: number
-    ) => {
+    (e: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
       if (e.nativeEvent.key === 'Backspace' && otp[index] === '' && index > 0) {
         inputRefs.current[index - 1]?.focus();
       }
@@ -53,106 +60,96 @@ export default function OtpVerificationScreen() {
   const confirmVerificationCode = useCallback(
     async (verificationCode: string) => {
       if (!userId) {
-        Toast.show({
-          type: 'error',
-          text1: '❌ Error',
-          text2: 'User ID is missing.',
-        });
+        Toast.show({ type: 'error', text1: 'Error', text2: 'User ID is missing.' });
         return;
       }
 
       try {
         const activeSession = await account.getSession('current').catch(() => null);
         if (activeSession) {
-          console.log('✅ Active session already exists:', activeSession);
-          caregiver == 'true' ? router.push('/CareGiverMainScreen') : router.push('/MainScreen'); 
+          caregiver === 'true'
+            ? router.replace('/CareGiverMainScreen')
+            : router.replace({ pathname: '/MainScreen', params: { fromLogin: 'true' } });
           return;
         }
 
-        const session = await account.updatePhoneSession(userId, verificationCode);
-        console.log('✅ Session:', session);
+        await account.updatePhoneSession(userId, verificationCode);
+        await refreshScope();
 
-        caregiver == 'true' ? router.push('/CareGiverMainScreen') : router.push({
-          pathname: '/MainScreen',
-          params: { fromLogin: 'true' },
-        });
-        
-        Toast.show({
-          type: 'success',
-          text1: '✅ Success',
-          text2: 'OTP verified successfully!',
-        });
+        caregiver === 'true'
+          ? router.replace('/CareGiverMainScreen')
+          : router.replace({ pathname: '/MainScreen', params: { fromLogin: 'true' } });
+
+        Toast.show({ type: 'success', text1: 'Verified', text2: 'Welcome to MedRem.' });
       } catch (error) {
-        console.error('❌ Verification Error:', error);
-        Toast.show({
-          type: 'error',
-          text1: '❌ Invalid OTP',
-          text2: 'Please enter the correct code.',
-        });
+        console.error('Verification Error:', error);
+        Toast.show({ type: 'error', text1: 'Invalid OTP', text2: 'Please enter the correct code.' });
       }
     },
-    [userId, router]
+    [userId, router, caregiver, refreshScope]
   );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🔐 OTP Verification</Text>
-      <Text style={styles.subtext}>Enter the code sent to your phone</Text>
+    <SafeAreaView style={styles.safe}>
+      <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={22} color={colors.white} />
+      </TouchableOpacity>
 
-      <View style={styles.otpContainer}>
-        {otp.map((digit, index) => (
-          <TextInput
-            key={index}
-            ref={(ref) => (inputRefs.current[index] = ref)}
-            value={digit}
-            onChangeText={(text) => handleChange(text, index)}
-            onKeyPress={(e) => handleKeyPress(e, index)}
-            style={styles.otpInput}
-            keyboardType="number-pad"
-            maxLength={1}
-            returnKeyType="done"
-          />
-        ))}
+      <View style={styles.hero}>
+        <Image source={localLogo} style={styles.logo} />
       </View>
-    </View>
+
+      <View style={screen.sheetGrow}>
+        <Text style={screen.brand}>MedRem</Text>
+        <Text style={screen.title}>Enter OTP</Text>
+        <Text style={screen.subtitle}>We sent a 6-digit code to your phone</Text>
+
+        <View style={styles.otpRow}>
+          {otp.map((digit, index) => (
+            <TextInput
+              key={index}
+              ref={(ref) => {
+                inputRefs.current[index] = ref;
+              }}
+              value={digit}
+              onChangeText={(text) => handleChange(text, index)}
+              onKeyPress={(e) => handleKeyPress(e, index)}
+              style={styles.otpInput}
+              keyboardType="number-pad"
+              maxLength={1}
+              returnKeyType="done"
+            />
+          ))}
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFF0F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#D63384',
-    marginBottom: 8,
-  },
-  subtext: {
-    color: '#555',
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  otpContainer: {
+  safe: { flex: 1, backgroundColor: colors.primary },
+  back: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  hero: { alignItems: 'center', paddingVertical: spacing.md },
+  logo: { width: 72, height: 72, borderRadius: 36 },
+  otpRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '90%',
-    marginVertical: 20,
+    marginTop: spacing.md,
+    gap: 6,
+    maxWidth: '100%',
   },
   otpInput: {
-    width: 45,
-    height: 55,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    width: 48,
+    height: 56,
+    flexGrow: 0,
+    flexShrink: 0,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
     textAlign: 'center',
-    fontSize: 18,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.primary,
   },
 });

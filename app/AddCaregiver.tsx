@@ -1,157 +1,236 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback } from 'react';
 import {
   View,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
-} from "react-native";
-import { Text } from "./components/customizableFontElements";
-import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
-
-import { ID, Permission, Query, Role } from "appwrite";
-const { config, database, account } = require("../config/appwriteConfig");
+  Share,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from './_components/customizableFontElements';
+import { useRouter } from 'expo-router';
+import Toast from 'react-native-toast-message';
+import { ID, Query } from 'appwrite';
+import { Ionicons } from '@expo/vector-icons';
+import { config, database, account } from '../config/appwriteConfig';
+import { colors, spacing } from './_theme/colors';
+import { screen } from './_theme/styles';
+import { sharedPermissions } from './_utils/patientScope';
+import { createInviteToken, buildInviteShareMessage, buildInviteUrl } from './_utils/invites';
 
 export default function AddCaregiver() {
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [name, setName] = useState('');
+  const [lastInvite, setLastInvite] = useState<{ token: string; url: string } | null>(null);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
 
-  const handleSaveCaregiver = useCallback(async () => {
-    if (!phoneNumber.trim()) {
+  const handleCreateInvite = useCallback(async () => {
+    const identity = email.trim() || phoneNumber.trim();
+    if (!identity) {
       Toast.show({
-        type: "error",
-        text1: "❌ Error",
-        text2: "Please enter a phone number before registration.",
+        type: 'error',
+        text1: 'Email or phone required',
+        text2: 'Enter an email (recommended) or phone for the caregiver.',
       });
       return;
     }
 
+    setSaving(true);
     try {
       const user = await account.get();
+      const patientPhone =
+        (user as any).phone || (user as any).phoneNumber || (user as any).email || '';
+      const patientName = (user as any).name || 'Patient';
 
-      const caregiverList = await database.listDocuments(
-        config.db,
-        config.col.caregivers,
-        [Query.equal("phoneNumber", phoneNumber.trim())]
-      );
-
-      if (caregiverList.total > 0) {
+      const existing = await database.listDocuments(config.db, config.col.caregivers, [
+        Query.equal('phoneNumber', identity),
+        Query.limit(1),
+      ]);
+      if (existing.total > 0) {
         Toast.show({
-          type: "error",
-          text1: "❌ Already Registered",
-          text2: "This phone number is already registered as a caregiver.",
+          type: 'error',
+          text1: 'Already invited',
+          text2: 'This caregiver is already linked or invited.',
         });
         return;
       }
-      const caregiverData = {
-        phoneNumber,
+
+      const token = createInviteToken();
+      const caregiverData: Record<string, string> = {
+        phoneNumber: identity,
         invitedAt: new Date().toISOString(),
+        patientId: user.$id,
+        patientPhone,
+        inviteToken: token,
+        inviteStatus: 'pending',
       };
+      if (email.trim()) caregiverData.email = email.trim().toLowerCase();
+      if (name.trim()) caregiverData.name = name.trim();
 
-      await database.createDocument(
-        config.db,
-        config.col.caregivers,
-        ID.unique(),
-        caregiverData,
-        [
-          Permission.read(Role.user(user.$id)),
-          Permission.write(Role.user(user.$id)),
-        ]
-      );
+      try {
+        await database.createDocument(
+          config.db,
+          config.col.caregivers,
+          ID.unique(),
+          caregiverData,
+          sharedPermissions(user.$id)
+        );
+      } catch {
+        await database.createDocument(
+          config.db,
+          config.col.caregivers,
+          ID.unique(),
+          {
+            phoneNumber: identity,
+            invitedAt: new Date().toISOString(),
+            inviteToken: token,
+            inviteStatus: 'pending',
+          },
+          sharedPermissions(user.$id)
+        );
+      }
+
+      const url = buildInviteUrl(token);
+      setLastInvite({ token, url });
+
+      const message = buildInviteShareMessage(token, patientName);
+      try {
+        await Share.share(
+          Platform.OS === 'ios' ? { message, url } : { message, title: 'MedRem caregiver invite' }
+        );
+      } catch {
+        /* user cancelled share */
+      }
 
       Toast.show({
-        type: "success",
-        text1: "✅ Caregiver Registered",
-        text2: `Caregiver registered successfully!`,
+        type: 'success',
+        text1: 'Invite created',
+        text2: 'Share the link so they can accept.',
       });
-
-      setPhoneNumber("");
-      router.push("/MainScreen");
     } catch (error) {
-      console.error("Error adding caregiver:", error);
-      Toast.show({
-        type: "error",
-        text1: "❌ Error",
-        text2: "Failed to send invitation. Please try again.",
-      });
+      console.error('Error inviting caregiver:', error);
+      Toast.show({ type: 'error', text1: 'Failed to create invite' });
+    } finally {
+      setSaving(false);
     }
-  }, [phoneNumber]);
+  }, [email, phoneNumber, name]);
+
+  const copyLink = useCallback(async () => {
+    if (!lastInvite) return;
+    try {
+      // expo-clipboard may not be installed — fall back to Share
+      const ClipboardMod = await import('expo-clipboard').catch(() => null);
+      if (ClipboardMod?.setStringAsync) {
+        await ClipboardMod.setStringAsync(lastInvite.url);
+        Toast.show({ type: 'success', text1: 'Link copied' });
+      } else {
+        await Share.share({ message: lastInvite.url });
+      }
+    } catch {
+      await Share.share({ message: lastInvite.url });
+    }
+  }, [lastInvite]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.description}>
-        Register a caregiver to assist with managing your medications.
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="+1 XXX XXXXXXX"
-        keyboardType="phone-pad"
-        value={phoneNumber}
-        onChangeText={setPhoneNumber}
-      />
-
-      <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
-          Caregivers will have access to add medication and view reports,
-          but your personal details will remain private.
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: phoneNumber ? "#E75480" : "#ccc" }]}
-        onPress={handleSaveCaregiver}
-        disabled={!phoneNumber}
-      >
-        <Text style={styles.buttonText}>Register</Text>
+    <SafeAreaView style={styles.safe}>
+      <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={22} color={colors.white} />
       </TouchableOpacity>
+
+      <View style={screen.sheetGrow}>
+        <Text style={screen.brand}>MedRem</Text>
+        <Text style={screen.title}>Invite caregiver</Text>
+        <Text style={screen.subtitle}>
+          Create a link they can open in MedRem. Email is recommended on the free plan (no SMS).
+        </Text>
+
+        <Text style={screen.label}>Name (optional)</Text>
+        <TextInput
+          style={screen.input}
+          placeholder="Caregiver name"
+          placeholderTextColor={colors.textMuted}
+          value={name}
+          onChangeText={setName}
+        />
+
+        <Text style={screen.label}>Email (recommended)</Text>
+        <TextInput
+          style={screen.input}
+          placeholder="caregiver@email.com"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+
+        <Text style={screen.label}>Phone (optional)</Text>
+        <TextInput
+          style={screen.input}
+          placeholder="+1 XXX XXXXXXX"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="phone-pad"
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+        />
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoText}>
+            They open the invite link, sign in with email, and are linked to your schedule automatically.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[screen.primaryBtn, saving && { opacity: 0.7 }]}
+          onPress={handleCreateInvite}
+          disabled={saving}
+        >
+          <Text style={screen.primaryBtnText}>{saving ? 'Creating…' : 'Create & share invite'}</Text>
+        </TouchableOpacity>
+
+        {lastInvite && (
+          <View style={styles.linkBox}>
+            <Text style={styles.linkLabel}>Invite code: {lastInvite.token}</Text>
+            <Text style={styles.linkUrl} numberOfLines={2}>
+              {lastInvite.url}
+            </Text>
+            <TouchableOpacity style={styles.copyBtn} onPress={copyLink}>
+              <Text style={styles.copyBtnText}>Copy link</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 10,
-    backgroundColor: "#fff",
-    top: 100,
-    borderTopRightRadius: 70,
-  },
-  description: {
-    textAlign: "center",
-    marginBottom: 20,
-    top: 40,
-    color: "#333",
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 20,
-    top: 40,
-  },
-  button: {
-    padding: 15,
-    marginTop: 20,
-    borderRadius: 8,
-    alignItems: "center",
-    top: 40,
-  },
-  buttonText: {
-    fontWeight: "bold",
-    color: "#fff",
-  },
+  safe: { flex: 1, backgroundColor: colors.primary },
+  back: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   infoBox: {
-    backgroundColor: "#E8F5E9",
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-    top: 40,
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
   },
-  infoText: {
-    textAlign: "center",
-    color: "#000",
-  }
+  infoText: { textAlign: 'center', color: colors.text, lineHeight: 20 },
+  linkBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 12,
+  },
+  linkLabel: { fontWeight: '700', color: colors.primary, marginBottom: 6 },
+  linkUrl: { color: colors.textMuted, fontSize: 13, marginBottom: 10 },
+  copyBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  copyBtnText: { color: colors.white, fontWeight: '700' },
 });
