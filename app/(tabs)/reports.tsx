@@ -1,4 +1,4 @@
-import MedicineReportHistory from '../MedicineReportHistory';
+import MedicineReportHistory from '../_components/MedicineReportHistory';
 
-/** Reports tab reuses the adherence + PDF screen */
+/** Reports tab — adherence + PDF share */
 export default MedicineReportHistory;

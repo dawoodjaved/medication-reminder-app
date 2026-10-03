@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import Svg, { Circle, Path, G, Rect } from 'react-native-svg';
+import Svg, { Circle, Path, G } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -170,18 +170,6 @@ export function HeartPulseGlyph({ size = 22, color = colors.accent }: { size?: n
         opacity={0.85}
       />
       <Path d="M7 12h2.5l1.2-2.5L13 14l1.5-2H17" stroke={colors.white} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-export function CalendarGlyph({ size = 22, color = colors.primary }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect x="3.5" y="5" width="17" height="15" rx="3" stroke={color} strokeWidth={1.5} fill={colors.surfaceMuted} />
-      <Path d="M3.5 10h17" stroke={color} strokeWidth={1.5} />
-      <Path d="M8 3.5v3M16 3.5v3" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-      <Circle cx="9" cy="14" r="1.2" fill={colors.accent} />
-      <Circle cx="13" cy="14" r="1.2" fill={colors.primarySoft} />
     </Svg>
   );
 }
@@ -437,46 +425,3 @@ export function PulseDot({ color = colors.danger, size = 10 }: { color?: string;
     </View>
   );
 }
-
-/** Icon-first action circle */
-export function ActionOrb({
-  icon,
-  onPress,
-  tone = 'surface',
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress?: () => void;
-  tone?: 'surface' | 'accent' | 'primary';
-}) {
-  const bg =
-    tone === 'accent' ? colors.accent : tone === 'primary' ? colors.primary : colors.surface;
-  const fg = tone === 'surface' ? colors.primary : colors.white;
-  return (
-    <Animated.View entering={FadeIn.duration(300)}>
-      <View
-        // Touchable via parent usually — keep pressable simple
-        style={[
-          actionStyles.orb,
-          {
-            backgroundColor: bg,
-            borderColor: tone === 'surface' ? colors.border : bg,
-          },
-        ]}
-        onTouchEnd={onPress}
-      >
-        <Ionicons name={icon} size={20} color={fg} />
-      </View>
-    </Animated.View>
-  );
-}
-
-const actionStyles = StyleSheet.create({
-  orb: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-});

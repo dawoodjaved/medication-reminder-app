@@ -12,21 +12,64 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { account } from '../config/appwriteConfig';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii, spacing } from './_theme/colors';
 import { screen } from './_theme/styles';
 import { useAuth } from './_context/authContext';
+import { registerPushToken } from './_utils/registerPushToken';
 
 const localLogo = require('../assets/images/logo.png');
+const ONBOARDING_KEY = 'medrem_onboarding_done';
 
 export default function OtpVerificationScreen() {
   const router = useRouter();
   const { refreshScope } = useAuth();
   const { caregiver, userId } = useLocalSearchParams<{ caregiver: string; userId: string }>();
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
-  const inputRefs = useRef<Array<TextInput | null>>([]);
+  const inputRefs = useRef<(TextInput | null)[]>([]);
+
+  const finishLogin = useCallback(async () => {
+    await refreshScope();
+    try {
+      await registerPushToken();
+    } catch (e) {
+      console.error(e);
+    }
+    if (caregiver === 'true') {
+      router.replace('/(tabs)');
+      return;
+    }
+    const onboarding = await AsyncStorage.getItem(ONBOARDING_KEY);
+    router.replace(onboarding === 'true' ? '/(tabs)' : '/Onboarding');
+  }, [caregiver, refreshScope, router]);
+
+  const confirmVerificationCode = useCallback(
+    async (verificationCode: string) => {
+      if (!userId) {
+        Toast.show({ type: 'error', text1: 'Error', text2: 'User ID is missing.' });
+        return;
+      }
+
+      try {
+        const activeSession = await account.getSession('current').catch(() => null);
+        if (activeSession) {
+          await finishLogin();
+          return;
+        }
+
+        await account.updatePhoneSession(userId, verificationCode);
+        await finishLogin();
+        Toast.show({ type: 'success', text1: 'Verified', text2: 'Welcome to MedRem.' });
+      } catch (error) {
+        console.error('Verification Error:', error);
+        Toast.show({ type: 'error', text1: 'Invalid OTP', text2: 'Please enter the correct code.' });
+      }
+    },
+    [userId, finishLogin]
+  );
 
   const handleChange = useCallback(
     (text: string, index: number) => {
@@ -45,7 +88,7 @@ export default function OtpVerificationScreen() {
         setOtp(next);
       }
     },
-    [otp]
+    [otp, confirmVerificationCode]
   );
 
   const handleKeyPress = useCallback(
@@ -55,38 +98,6 @@ export default function OtpVerificationScreen() {
       }
     },
     [otp]
-  );
-
-  const confirmVerificationCode = useCallback(
-    async (verificationCode: string) => {
-      if (!userId) {
-        Toast.show({ type: 'error', text1: 'Error', text2: 'User ID is missing.' });
-        return;
-      }
-
-      try {
-        const activeSession = await account.getSession('current').catch(() => null);
-        if (activeSession) {
-          caregiver === 'true'
-            ? router.replace('/CareGiverMainScreen')
-            : router.replace({ pathname: '/MainScreen', params: { fromLogin: 'true' } });
-          return;
-        }
-
-        await account.updatePhoneSession(userId, verificationCode);
-        await refreshScope();
-
-        caregiver === 'true'
-          ? router.replace('/CareGiverMainScreen')
-          : router.replace({ pathname: '/MainScreen', params: { fromLogin: 'true' } });
-
-        Toast.show({ type: 'success', text1: 'Verified', text2: 'Welcome to MedRem.' });
-      } catch (error) {
-        console.error('Verification Error:', error);
-        Toast.show({ type: 'error', text1: 'Invalid OTP', text2: 'Please enter the correct code.' });
-      }
-    },
-    [userId, router, caregiver, refreshScope]
   );
 
   return (

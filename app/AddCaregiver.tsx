@@ -121,16 +121,9 @@ export default function AddCaregiver() {
   const copyLink = useCallback(async () => {
     if (!lastInvite) return;
     try {
-      // expo-clipboard may not be installed — fall back to Share
-      const ClipboardMod = await import('expo-clipboard').catch(() => null);
-      if (ClipboardMod?.setStringAsync) {
-        await ClipboardMod.setStringAsync(lastInvite.url);
-        Toast.show({ type: 'success', text1: 'Link copied' });
-      } else {
-        await Share.share({ message: lastInvite.url });
-      }
-    } catch {
       await Share.share({ message: lastInvite.url });
+    } catch {
+      /* ignore */
     }
   }, [lastInvite]);
 

@@ -26,12 +26,12 @@ export async function loadWidgetSnapshot(): Promise<WidgetSnapshot | null> {
 }
 
 export function buildWidgetSnapshot(opts: {
-  reminders: Array<{
+  reminders: {
     medicineName: string;
     time: string;
     taken: boolean;
     medicines?: { isCritical?: boolean };
-  }>;
+  }[];
   medicines?: any[];
 }): WidgetSnapshot {
   const now = new Date();
