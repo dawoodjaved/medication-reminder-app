@@ -11,16 +11,16 @@ import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { Text } from './_components/customizableFontElements';
+import { Text } from './customizableFontElements';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { database, account, config } from '../config/appwriteConfig';
+import { database, account, config } from '../../config/appwriteConfig';
 import { Query } from 'appwrite';
-import { resolvePatientScope } from './_utils/patientScope';
-import { colors, radii, spacing } from './_theme/colors';
-import { screen } from './_theme/styles';
-import { ProgressRing, MedHintIcon, SoftOrbs, FadeBlock } from './_theme/visuals';
+import { resolvePatientScope } from '../_utils/patientScope';
+import { colors, radii, spacing } from '../_theme/colors';
+import { screen } from '../_theme/styles';
+import { ProgressRing, MedHintIcon, SoftOrbs, FadeBlock } from '../_theme/visuals';
 
 interface Medication {
   name: string;
@@ -55,7 +55,7 @@ export default function MedicineReportHistory() {
   const [missed, setMissed] = useState<Medication[]>([]);
   const [adherence, setAdherence] = useState(0);
   const [symptoms, setSymptoms] = useState<
-    Array<{ date: string; note: string; severity?: string; medicineName?: string }>
+    { date: string; note: string; severity?: string; medicineName?: string }[]
   >([]);
 
   const fetchMedicationReport = useCallback(async () => {

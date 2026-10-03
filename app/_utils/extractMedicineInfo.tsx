@@ -222,14 +222,15 @@ async function parsePrescriptionTextByGrok(text: string) {
     let parsed;
     try {
       parsed = JSON.parse(message);
-    } catch (err) {
+    } catch {
       console.error('Model returned non-JSON response:', message);
       throw new Error(`Model returned invalid JSON:\n${message}`);
     }
 
     return parsed;
   } catch (err) {
-    console.error('Parsing Error:', err.message);
-    return { error: true, message: err.message };
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Parsing Error:', message);
+    return { error: true, message };
   }
 }

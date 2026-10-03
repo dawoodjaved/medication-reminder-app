@@ -1,8 +1,7 @@
-import React, { useEffect }  from "react";
-import { SafeAreaView } from "react-native";
-import HomeScreen from "./HomeScreen";
-import Toast from "react-native-toast-message";
-import ReminderNotification from "./ReminderNotification";
+import React, { useEffect } from 'react';
+import { SafeAreaView } from 'react-native';
+import HomeScreen from './HomeScreen';
+import Toast from 'react-native-toast-message';
 
 export default function App() {
   useEffect(() => {
@@ -11,8 +10,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <HomeScreen/>
+      <HomeScreen />
     </SafeAreaView>
   );
 }
-
