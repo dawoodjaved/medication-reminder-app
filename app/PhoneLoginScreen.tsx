@@ -7,6 +7,9 @@ import {
   Image,
   Keyboard,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from './_components/customizableFontElements';
@@ -108,6 +111,12 @@ const PhoneLoginScreen: React.FC = () => {
   }, [email, password, name, authMode, refreshScope, router]);
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      // Android uses softwareKeyboardLayoutMode=resize — avoid double-adjust with behavior.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <SafeAreaView style={styles.safe}>
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
@@ -118,7 +127,11 @@ const PhoneLoginScreen: React.FC = () => {
           <Image source={localLogo} style={styles.logo} />
         </View>
 
-        <View style={screen.sheetGrow}>
+        <ScrollView
+          style={screen.sheetGrow}
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={screen.brand}>MedRem</Text>
           <Text style={screen.title}>Create your account</Text>
           <Text style={screen.subtitle}>
@@ -230,9 +243,10 @@ const PhoneLoginScreen: React.FC = () => {
               </TouchableOpacity>
             </>
           )}
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 

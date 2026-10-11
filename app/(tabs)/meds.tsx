@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,11 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Text } from '../_components/customizableFontElements';
 import { colors, radii, spacing } from '../_theme/colors';
+import { LIST_PERF, useLayout } from '../_theme/layout';
 import {
   MedHintIcon,
-  FadeBlock,
   ProgressBar,
-  SoftOrbs,
   EmptyIllustration,
   StatBubble,
   PulseDot,
@@ -29,19 +28,85 @@ import { Query } from 'appwrite';
 import { useAuth } from '../_context/authContext';
 import { predictRefill, formatRefillShareList } from '../_utils/refillPrediction';
 
+type MedItem = {
+  $id: string;
+  medicineName: string;
+  medicineType?: string;
+  frequency?: string;
+  isCritical?: boolean;
+  quantityRemaining?: number;
+  quantity?: number;
+  refillThreshold?: number;
+  patientId?: string;
+};
+
+const MedRow = memo(function MedRow({
+  item,
+  onPress,
+  onDelete,
+}: {
+  item: MedItem;
+  onPress: (item: MedItem) => void;
+  onDelete: (item: MedItem) => void;
+}) {
+  const info = predictRefill(item);
+  const maxQ = Math.max(info.quantityRemaining, (item.refillThreshold || 10) * 3, 1);
+  const stockPct = Math.min(100, Math.round((info.quantityRemaining / maxQ) * 100));
+
+  return (
+    <TouchableOpacity
+      style={[styles.card, item.isCritical && styles.cardCritical]}
+      onPress={() => onPress(item)}
+      activeOpacity={0.85}
+    >
+      <MedHintIcon type={item.medicineType} critical={!!item.isCritical} size={50} />
+      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.medicineName}
+          </Text>
+          {item.isCritical ? <PulseDot size={7} animated={false} /> : null}
+        </View>
+        <Text style={styles.meta} numberOfLines={1}>
+          {item.medicineType || 'Tablet'}
+          {item.frequency ? ` · ${item.frequency}` : ''}
+        </Text>
+        <View style={styles.stockRow}>
+          <ProgressBar
+            progress={Math.max(8, stockPct)}
+            height={6}
+            color={info.isLow ? colors.warning : colors.success}
+            animated={false}
+          />
+        </View>
+        <Text style={[styles.stock, info.isLow && { color: colors.warning }]}>
+          {info.quantityRemaining}
+          {info.daysLeft != null ? ` · ${info.daysLeft}d` : ''}
+        </Text>
+      </View>
+      <TouchableOpacity onPress={() => onDelete(item)} hitSlop={12} style={styles.trash}>
+        <Ionicons name="trash-outline" size={18} color={colors.danger} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+});
+
 export default function MedsScreen() {
   const { scope } = useAuth();
   const router = useRouter();
+  const { contentPad, titleSize, listBottom } = useLayout();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [meds, setMeds] = useState<any[]>([]);
+  const [meds, setMeds] = useState<MedItem[]>([]);
   const patientId = scope?.patientId;
+  const hasDataRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!patientId) {
       setLoading(false);
       setRefreshing(false);
       setMeds([]);
+      hasDataRef.current = false;
       return;
     }
     try {
@@ -61,7 +126,8 @@ export default function MedsScreen() {
           (m: any) => !m.patientId || m.patientId === patientId
         );
       }
-      setMeds(res.documents);
+      setMeds(res.documents as unknown as MedItem[]);
+      hasDataRef.current = true;
     } catch (e) {
       console.error(e);
       Toast.show({ type: 'error', text1: 'Could not load medicines' });
@@ -73,46 +139,53 @@ export default function MedsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      if (!hasDataRef.current) setLoading(true);
       load();
     }, [load])
   );
 
   const summary = useMemo(() => {
-    const low = meds.filter((m) => predictRefill(m).isLow).length;
-    const critical = meds.filter((m) => m.isCritical).length;
+    let low = 0;
+    let critical = 0;
+    for (const m of meds) {
+      if (predictRefill(m).isLow) low++;
+      if (m.isCritical) critical++;
+    }
     return { total: meds.length, low, critical };
   }, [meds]);
 
-  const confirmDelete = (item: any) => {
-    Alert.alert('Delete', item.medicineName, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const reminders = await database.listDocuments(config.db, config.col.reminders, [
-              Query.equal('medicines', item.$id),
-              Query.limit(100),
-            ]);
-            await Promise.all(
-              reminders.documents.map((r: any) =>
-                database.deleteDocument(config.db, config.col.reminders, r.$id)
-              )
-            );
-            await database.deleteDocument(config.db, config.col.medicines, item.$id);
-            Toast.show({ type: 'success', text1: 'Removed' });
-            load();
-          } catch {
-            Toast.show({ type: 'error', text1: 'Delete failed' });
-          }
+  const confirmDelete = useCallback(
+    (item: MedItem) => {
+      Alert.alert('Delete', item.medicineName, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const reminders = await database.listDocuments(config.db, config.col.reminders, [
+                Query.equal('medicines', item.$id),
+                Query.limit(100),
+              ]);
+              await Promise.all(
+                reminders.documents.map((r: any) =>
+                  database.deleteDocument(config.db, config.col.reminders, r.$id)
+                )
+              );
+              await database.deleteDocument(config.db, config.col.medicines, item.$id);
+              Toast.show({ type: 'success', text1: 'Removed' });
+              load();
+            } catch {
+              Toast.show({ type: 'error', text1: 'Delete failed' });
+            }
+          },
         },
-      },
-    ]);
-  };
+      ]);
+    },
+    [load]
+  );
 
-  const shareRefills = async () => {
+  const shareRefills = useCallback(async () => {
     const low = meds.map(predictRefill).filter((r) => r.isLow);
     if (!low.length) {
       Toast.show({ type: 'info', text1: 'Nothing to refill' });
@@ -123,9 +196,25 @@ export default function MedsScreen() {
     } catch {
       /* cancelled */
     }
-  };
+  }, [meds]);
 
-  if (loading && !refreshing) {
+  const onPressMed = useCallback(
+    (item: MedItem) => {
+      router.push({ pathname: '/EditMedicine', params: { id: item.$id } });
+    },
+    [router]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: MedItem }) => (
+      <MedRow item={item} onPress={onPressMed} onDelete={confirmDelete} />
+    ),
+    [onPressMed, confirmDelete]
+  );
+
+  const keyExtractor = useCallback((i: MedItem) => i.$id, []);
+
+  if (loading && !refreshing && !hasDataRef.current) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -135,10 +224,12 @@ export default function MedsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.top}>
-        <View>
+      <View style={[styles.top, { paddingHorizontal: contentPad }]}>
+        <View style={{ flexShrink: 1 }}>
           <Text style={styles.brand}>CABINET</Text>
-          <Text style={styles.title}>Medicines</Text>
+          <Text style={[styles.title, { fontSize: titleSize }]} numberOfLines={1}>
+            Medicines
+          </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity style={styles.iconBtn} onPress={shareRefills}>
@@ -150,7 +241,7 @@ export default function MedsScreen() {
         </View>
       </View>
 
-      <View style={styles.statRow}>
+      <View style={[styles.statRow, { paddingHorizontal: contentPad }]}>
         <StatBubble value={summary.total} label="Total" tone="ok" icon="medical" />
         <StatBubble value={summary.critical} label="Critical" tone="warn" icon="alert" />
         <StatBubble value={summary.low} label="Low" tone="accent" icon="cube" />
@@ -158,8 +249,13 @@ export default function MedsScreen() {
 
       <FlatList
         data={meds}
-        keyExtractor={(i) => i.$id}
-        contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 40 }}
+        keyExtractor={keyExtractor}
+        {...LIST_PERF}
+        contentContainerStyle={{
+          paddingHorizontal: contentPad,
+          paddingTop: spacing.sm,
+          paddingBottom: listBottom,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -176,51 +272,7 @@ export default function MedsScreen() {
             <Text style={styles.empty}>Tap + to add</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
-          const info = predictRefill(item);
-          const maxQ = Math.max(info.quantityRemaining, (item.refillThreshold || 10) * 3, 1);
-          const stockPct = Math.min(100, Math.round((info.quantityRemaining / maxQ) * 100));
-          return (
-            <FadeBlock delay={Math.min(index * 35, 220)}>
-              <TouchableOpacity
-                style={[styles.card, item.isCritical && styles.cardCritical]}
-                onPress={() =>
-                  router.push({ pathname: '/EditMedicine', params: { id: item.$id } })
-                }
-                activeOpacity={0.85}
-              >
-                <SoftOrbs style={{ opacity: 0.3 }} />
-                <MedHintIcon type={item.medicineType} critical={!!item.isCritical} size={50} />
-                <View style={{ flex: 1, marginLeft: 12, zIndex: 1 }}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {item.medicineName}
-                    </Text>
-                    {item.isCritical ? <PulseDot size={7} /> : null}
-                  </View>
-                  <Text style={styles.meta} numberOfLines={1}>
-                    {item.medicineType || 'Tablet'}
-                    {item.frequency ? ` · ${item.frequency}` : ''}
-                  </Text>
-                  <View style={styles.stockRow}>
-                    <ProgressBar
-                      progress={Math.max(8, stockPct)}
-                      height={6}
-                      color={info.isLow ? colors.warning : colors.success}
-                    />
-                  </View>
-                  <Text style={[styles.stock, info.isLow && { color: colors.warning }]}>
-                    {info.quantityRemaining}
-                    {info.daysLeft != null ? ` · ${info.daysLeft}d` : ''}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => confirmDelete(item)} hitSlop={12} style={styles.trash}>
-                  <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            </FadeBlock>
-          );
-        }}
+        renderItem={renderItem}
       />
     </SafeAreaView>
   );
@@ -233,12 +285,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    gap: 12,
   },
   brand: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
-  title: { fontSize: 30, fontWeight: '800', color: colors.primary, letterSpacing: -0.4 },
+  title: { fontWeight: '800', color: colors.primary, letterSpacing: -0.4 },
   iconBtn: {
     width: 44,
     height: 44,
@@ -260,7 +312,6 @@ const styles = StyleSheet.create({
   statRow: {
     flexDirection: 'row',
     gap: 10,
-    paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
   empty: { textAlign: 'center', color: colors.textMuted },
@@ -273,7 +324,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
   },
   cardCritical: { borderColor: colors.danger, borderWidth: 1.5 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -281,5 +331,5 @@ const styles = StyleSheet.create({
   meta: { color: colors.textMuted, marginTop: 2, fontSize: 12, fontWeight: '600' },
   stockRow: { marginTop: 10, marginBottom: 4 },
   stock: { color: colors.success, fontWeight: '700', fontSize: 12 },
-  trash: { padding: 6, zIndex: 1 },
+  trash: { padding: 6 },
 });

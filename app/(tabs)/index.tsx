@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Text } from '../_components/customizableFontElements';
 import { colors, radii, spacing } from '../_theme/colors';
+import { LIST_PERF, useLayout } from '../_theme/layout';
 import {
   ProgressRing,
   SoftOrbs,
@@ -45,45 +46,102 @@ type Reminder = {
   };
 };
 
+const ReminderRow = memo(function ReminderRow({
+  item,
+  onTaken,
+  contentPad,
+}: {
+  item: Reminder;
+  onTaken: (item: Reminder) => void;
+  contentPad: number;
+}) {
+  const critical = !!item.medicines?.isCritical;
+  return (
+    <View
+      style={[
+        styles.card,
+        { marginHorizontal: contentPad },
+        item.taken && styles.cardDone,
+        critical && !item.taken && styles.cardCritical,
+      ]}
+    >
+      <MedHintIcon
+        type={item.medicines?.medicineType}
+        critical={critical && !item.taken}
+        size={46}
+      />
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {item.medicineName}
+        </Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.cardMeta}>{item.time}</Text>
+          {critical && !item.taken ? <PulseDot size={8} animated={false} /> : null}
+          {item.snoozed && !item.taken ? (
+            <Ionicons name="time-outline" size={14} color={colors.warning} />
+          ) : null}
+        </View>
+      </View>
+      {item.taken ? (
+        <View style={styles.badgeDone}>
+          <Ionicons name="checkmark" size={18} color={colors.white} />
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.quickTaken} onPress={() => onTaken(item)}>
+          <Ionicons name="checkmark" size={18} color={colors.white} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
 export default function TodayScreen() {
   const { scope } = useAuth();
   const router = useRouter();
+  const { contentPad, titleSize, heroPad, chipSize, listBottom, isCompact } = useLayout();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [refills, setRefills] = useState<RefillInfo[]>([]);
   const patientId = scope?.patientId;
+  const hasDataRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!patientId) {
       setLoading(false);
       setRefreshing(false);
       setReminders([]);
+      hasDataRef.current = false;
       return;
     }
     try {
-      await flushOfflineQueue();
-      const res = await database.listDocuments(config.db, config.col.reminders, [
+      // Flush offline queue in the background — never block the first paint.
+      void flushOfflineQueue();
+
+      const remindersPromise = database.listDocuments(config.db, config.col.reminders, [
         Query.equal('userId', patientId),
         Query.equal('date', todayISO()),
         Query.orderAsc('time'),
         Query.limit(100),
       ]);
-      const docs = res.documents as unknown as Reminder[];
-      setReminders(docs);
 
-      let medDocs: any[] = [];
-      try {
-        const meds = await database.listDocuments(config.db, config.col.medicines, [
+      const medsPromise = database
+        .listDocuments(config.db, config.col.medicines, [
           Query.equal('patientId', patientId),
           Query.limit(50),
-        ]);
-        medDocs = meds.documents;
-        setRefills(medDocs.map(predictRefill).filter((r) => r.isLow));
-      } catch {
-        setRefills([]);
-      }
-      await saveWidgetSnapshot(buildWidgetSnapshot({ reminders: docs, medicines: medDocs }));
+        ])
+        .catch(() => null);
+
+      const [res, meds] = await Promise.all([remindersPromise, medsPromise]);
+      const docs = res.documents as unknown as Reminder[];
+      setReminders(docs);
+      hasDataRef.current = true;
+
+      const medDocs = (meds?.documents ?? []) as any[];
+      setRefills(medDocs.map(predictRefill).filter((r) => r.isLow));
+
+      // Widget snapshot can wait until after UI updates.
+      void saveWidgetSnapshot(buildWidgetSnapshot({ reminders: docs, medicines: medDocs }));
     } catch (e) {
       console.error(e);
       Toast.show({ type: 'error', text1: 'Could not load today' });
@@ -95,7 +153,8 @@ export default function TodayScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      // Stale-while-revalidate: keep showing prior data on tab revisit.
+      if (!hasDataRef.current) setLoading(true);
       load();
     }, [load])
   );
@@ -124,21 +183,24 @@ export default function TodayScreen() {
     };
   }, [reminders]);
 
-  const onTaken = async (item: Reminder) => {
-    try {
-      const result = await markTaken(item.$id, item.medicines?.$id);
-      Toast.show({
-        type: 'success',
-        text1: result.queued ? 'Saved offline' : 'Taken',
-        text2: item.medicineName,
-      });
-      load();
-    } catch {
-      Toast.show({ type: 'error', text1: 'Update failed' });
-    }
-  };
+  const onTaken = useCallback(
+    async (item: Reminder) => {
+      try {
+        const result = await markTaken(item.$id, item.medicines?.$id);
+        Toast.show({
+          type: 'success',
+          text1: result.queued ? 'Saved offline' : 'Taken',
+          text2: item.medicineName,
+        });
+        load();
+      } catch {
+        Toast.show({ type: 'error', text1: 'Update failed' });
+      }
+    },
+    [load]
+  );
 
-  const shareRefillList = async () => {
+  const shareRefillList = useCallback(async () => {
     if (!refills.length) {
       Toast.show({ type: 'info', text1: 'Stock looks fine' });
       return;
@@ -150,9 +212,157 @@ export default function TodayScreen() {
     } catch {
       /* cancelled */
     }
-  };
+  }, [refills, scope?.role]);
 
-  if (loading && !refreshing) {
+  const renderItem = useCallback(
+    ({ item }: { item: Reminder }) => (
+      <ReminderRow item={item} onTaken={onTaken} contentPad={contentPad} />
+    ),
+    [onTaken, contentPad]
+  );
+
+  const keyExtractor = useCallback((i: Reminder) => i.$id, []);
+
+  const listHeader = useMemo(
+    () => (
+      <View style={[styles.headerBlock, { paddingHorizontal: contentPad }]}>
+        <FadeBlock>
+          <Text style={styles.brand}>MEDREM</Text>
+          <Text style={[styles.title, { fontSize: titleSize }]}>Today</Text>
+        </FadeBlock>
+
+        <FadeBlock delay={40} style={[styles.hero, { padding: heroPad }]}>
+          <SoftOrbs />
+          <ProgressRing
+            progress={stats.pct}
+            size={isCompact ? 80 : 92}
+            stroke={9}
+            label={`${stats.pct}%`}
+            sublabel="done"
+            trackColor="rgba(255,255,255,0.2)"
+            fillColor={colors.accent}
+            labelColor={colors.white}
+          />
+          <View style={styles.heroCopy}>
+            {stats.next ? (
+              <>
+                <View style={styles.nextRow}>
+                  <MedHintIcon
+                    type={stats.next.medicines?.medicineType}
+                    critical={!!stats.next.medicines?.isCritical}
+                    size={isCompact ? 34 : 38}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.heroTime}>{stats.next.time}</Text>
+                    <Text style={styles.heroMed} numberOfLines={1}>
+                      {stats.next.medicineName}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.takenBtn} onPress={() => onTaken(stats.next!)}>
+                  <Ionicons name="checkmark" size={16} color={colors.white} />
+                  <Text style={styles.takenBtnText}>Taken</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.heroTime}>All clear</Text>
+                <Text style={styles.heroMed}>{stats.total ? 'Complete' : 'No doses'}</Text>
+                <TouchableOpacity
+                  style={styles.takenBtn}
+                  onPress={() => router.push('/AddMedicine')}
+                >
+                  <Ionicons name="add" size={16} color={colors.white} />
+                  <Text style={styles.takenBtnText}>Add</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </FadeBlock>
+
+        <FadeBlock delay={70} style={styles.statRow}>
+          <StatBubble value={stats.taken} label="Taken" tone="ok" icon="checkmark" />
+          <StatBubble value={stats.overdue.length} label="Late" tone="warn" icon="time" />
+          <StatBubble value={refills.length} label="Refill" tone="accent" icon="cube" />
+        </FadeBlock>
+
+        <FadeBlock delay={90} style={styles.quickRow}>
+          {scope?.role === 'caregiver' && (
+            <TouchableOpacity
+              style={[styles.quickChip, { width: chipSize, height: chipSize, borderRadius: chipSize / 2 }]}
+              onPress={() => router.push('/CaregiverFeed')}
+            >
+              <Ionicons name="pulse" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.quickChip, { width: chipSize, height: chipSize, borderRadius: chipSize / 2 }]}
+            onPress={() => router.push('/LogSymptom')}
+          >
+            <Ionicons name="heart-outline" size={20} color={colors.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickChip, { width: chipSize, height: chipSize, borderRadius: chipSize / 2 }]}
+            onPress={shareRefillList}
+          >
+            <Ionicons name="share-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickChip, { width: chipSize, height: chipSize, borderRadius: chipSize / 2 }]}
+            onPress={() => router.push('/(tabs)/doctors')}
+          >
+            <Ionicons name="people-outline" size={20} color={colors.primarySoft} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.quickChip,
+              styles.quickChipAccent,
+              { width: chipSize, height: chipSize, borderRadius: chipSize / 2 },
+            ]}
+            onPress={() => router.push('/AddMedicine')}
+          >
+            <Ionicons name="add" size={22} color={colors.white} />
+          </TouchableOpacity>
+        </FadeBlock>
+
+        {stats.overdue.length > 0 && (
+          <View style={styles.bannerDanger}>
+            <PulseDot />
+            <Text style={styles.bannerNum}>{stats.overdue.length}</Text>
+          </View>
+        )}
+
+        {refills.length > 0 && (
+          <TouchableOpacity style={styles.bannerWarn} onPress={shareRefillList}>
+            <Ionicons name="cube-outline" size={18} color={colors.warning} />
+            <Text style={styles.bannerText} numberOfLines={1}>
+              {refills
+                .slice(0, 2)
+                .map((r) => r.medicineName)
+                .join(' · ')}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.sectionTitle}>Schedule</Text>
+      </View>
+    ),
+    [
+      contentPad,
+      titleSize,
+      heroPad,
+      chipSize,
+      isCompact,
+      stats,
+      refills,
+      scope?.role,
+      onTaken,
+      shareRefillList,
+      router,
+    ]
+  );
+
+  if (loading && !refreshing && !hasDataRef.current) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -164,7 +374,8 @@ export default function TodayScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
         data={reminders}
-        keyExtractor={(i) => i.$id}
+        keyExtractor={keyExtractor}
+        {...LIST_PERF}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -175,158 +386,15 @@ export default function TodayScreen() {
             tintColor={colors.primary}
           />
         }
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <FadeBlock>
-              <Text style={styles.brand}>MEDREM</Text>
-              <Text style={styles.title}>Today</Text>
-            </FadeBlock>
-
-            <FadeBlock delay={50} style={styles.hero}>
-              <SoftOrbs />
-              <ProgressRing
-                progress={stats.pct}
-                size={92}
-                stroke={9}
-                label={`${stats.pct}%`}
-                sublabel="done"
-                trackColor="rgba(255,255,255,0.2)"
-                fillColor={colors.accent}
-                labelColor={colors.white}
-              />
-              <View style={styles.heroCopy}>
-                {stats.next ? (
-                  <>
-                    <View style={styles.nextRow}>
-                      <MedHintIcon
-                        type={stats.next.medicines?.medicineType}
-                        critical={!!stats.next.medicines?.isCritical}
-                        size={38}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.heroTime}>{stats.next.time}</Text>
-                        <Text style={styles.heroMed} numberOfLines={1}>
-                          {stats.next.medicineName}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity style={styles.takenBtn} onPress={() => onTaken(stats.next!)}>
-                      <Ionicons name="checkmark" size={16} color={colors.white} />
-                      <Text style={styles.takenBtnText}>Taken</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.heroTime}>All clear</Text>
-                    <Text style={styles.heroMed}>{stats.total ? 'Complete' : 'No doses'}</Text>
-                    <TouchableOpacity
-                      style={styles.takenBtn}
-                      onPress={() => router.push('/AddMedicine')}
-                    >
-                      <Ionicons name="add" size={16} color={colors.white} />
-                      <Text style={styles.takenBtnText}>Add</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
-            </FadeBlock>
-
-            <FadeBlock delay={90} style={styles.statRow}>
-              <StatBubble value={stats.taken} label="Taken" tone="ok" icon="checkmark" />
-              <StatBubble value={stats.overdue.length} label="Late" tone="warn" icon="time" />
-              <StatBubble value={refills.length} label="Refill" tone="accent" icon="cube" />
-            </FadeBlock>
-
-            <FadeBlock delay={120} style={styles.quickRow}>
-              {scope?.role === 'caregiver' && (
-                <TouchableOpacity style={styles.quickChip} onPress={() => router.push('/CaregiverFeed')}>
-                  <Ionicons name="pulse" size={20} color={colors.primary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.quickChip} onPress={() => router.push('/LogSymptom')}>
-                <Ionicons name="heart-outline" size={20} color={colors.accent} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickChip} onPress={shareRefillList}>
-                <Ionicons name="share-outline" size={20} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickChip} onPress={() => router.push('/(tabs)/doctors')}>
-                <Ionicons name="people-outline" size={20} color={colors.primarySoft} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickChip, styles.quickChipAccent]}
-                onPress={() => router.push('/AddMedicine')}
-              >
-                <Ionicons name="add" size={22} color={colors.white} />
-              </TouchableOpacity>
-            </FadeBlock>
-
-            {stats.overdue.length > 0 && (
-              <View style={styles.bannerDanger}>
-                <PulseDot />
-                <Text style={styles.bannerNum}>{stats.overdue.length}</Text>
-              </View>
-            )}
-
-            {refills.length > 0 && (
-              <TouchableOpacity style={styles.bannerWarn} onPress={shareRefillList}>
-                <Ionicons name="cube-outline" size={18} color={colors.warning} />
-                <Text style={styles.bannerText} numberOfLines={1}>
-                  {refills.slice(0, 2).map((r) => r.medicineName).join(' · ')}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <Text style={styles.sectionTitle}>Schedule</Text>
-          </View>
-        }
+        ListHeaderComponent={listHeader}
         ListEmptyComponent={
           <View>
             <EmptyIllustration kind="meds" />
             <Text style={styles.empty}>Nothing scheduled</Text>
           </View>
         }
-        contentContainerStyle={{ paddingBottom: 40 }}
-        renderItem={({ item, index }) => {
-          const critical = !!item.medicines?.isCritical;
-          return (
-            <FadeBlock delay={Math.min(index * 40, 240)}>
-              <View
-                style={[
-                  styles.card,
-                  item.taken && styles.cardDone,
-                  critical && !item.taken && styles.cardCritical,
-                ]}
-              >
-                <MedHintIcon
-                  type={item.medicines?.medicineType}
-                  critical={critical && !item.taken}
-                  size={46}
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.medicineName}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    <Text style={styles.cardMeta}>{item.time}</Text>
-                    {critical && !item.taken ? <PulseDot size={8} /> : null}
-                    {item.snoozed && !item.taken ? (
-                      <Ionicons name="time-outline" size={14} color={colors.warning} />
-                    ) : null}
-                  </View>
-                </View>
-                {item.taken ? (
-                  <View style={styles.badgeDone}>
-                    <Ionicons name="checkmark" size={18} color={colors.white} />
-                  </View>
-                ) : (
-                  <TouchableOpacity style={styles.quickTaken} onPress={() => onTaken(item)}>
-                    <Ionicons name="checkmark" size={18} color={colors.white} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </FadeBlock>
-          );
-        }}
+        contentContainerStyle={{ paddingBottom: listBottom }}
+        renderItem={renderItem}
       />
     </SafeAreaView>
   );
@@ -335,11 +403,10 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
-  headerBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  headerBlock: { paddingTop: spacing.sm },
   brand: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
   title: {
     color: colors.primary,
-    fontSize: 34,
     fontWeight: '800',
     marginBottom: spacing.md,
     letterSpacing: -0.6,
@@ -347,13 +414,12 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: colors.primary,
     borderRadius: radii.lg,
-    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     overflow: 'hidden',
   },
-  heroCopy: { flex: 1, zIndex: 1 },
+  heroCopy: { flex: 1, zIndex: 1, minWidth: 0 },
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   heroTime: { color: colors.accentSoft, fontSize: 12, fontWeight: '700' },
   heroMed: { color: colors.white, fontSize: 18, fontWeight: '800', marginTop: 2 },
@@ -369,11 +435,8 @@ const styles = StyleSheet.create({
   },
   takenBtnText: { color: colors.white, fontWeight: '700' },
   statRow: { flexDirection: 'row', gap: 10, marginTop: spacing.md },
-  quickRow: { flexDirection: 'row', gap: 10, marginTop: spacing.md },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: spacing.md },
   quickChip: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -412,7 +475,6 @@ const styles = StyleSheet.create({
   },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 4 },
   card: {
-    marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: radii.md,

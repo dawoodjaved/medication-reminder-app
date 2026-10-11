@@ -4,11 +4,10 @@ import { enqueueAction, peekQueue, setQueue, OfflineAction } from './offlineQueu
 
 async function isOnline(): Promise<boolean> {
   try {
-    // Lightweight connectivity probe — Appwrite endpoint HEAD/GET may fail CORS on web;
-    // for RN, fetch with short timeout against a known host.
+    // Probe the project Appwrite endpoint (not a generic cloud host).
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 3000);
-    await fetch('https://cloud.appwrite.io/v1/health', { signal: controller.signal });
+    const t = setTimeout(() => controller.abort(), 1200);
+    await fetch(`${config.endpoint}/health`, { signal: controller.signal });
     clearTimeout(t);
     return true;
   } catch {
@@ -74,19 +73,41 @@ export async function markSnooze(reminderId: string, time: string) {
 }
 
 export async function flushOfflineQueue() {
-  const online = await isOnline();
-  if (!online) return 0;
-
+  // Skip network probe when there is nothing to flush (common path).
   const queue = await peekQueue();
   if (!queue.length) return 0;
+
+  const online = await isOnline();
+  if (!online) return 0;
 
   const remaining: OfflineAction[] = [];
   let flushed = 0;
 
   for (const action of queue) {
     try {
+      // Apply directly — do not call markTaken/markSnooze or we can re-enqueue mid-flush.
       if (action.type === 'taken') {
-        await markTaken(action.reminderId, action.medicineId);
+        await database.updateDocument(config.db, config.col.reminders, action.reminderId, {
+          taken: true,
+          notificationSend: true,
+        });
+        if (action.medicineId) {
+          try {
+            const med = await database.getDocument(
+              config.db,
+              config.col.medicines,
+              action.medicineId
+            );
+            const qty = Number(med.quantityRemaining ?? med.quantity ?? 0);
+            if (qty > 0) {
+              await database.updateDocument(config.db, config.col.medicines, action.medicineId, {
+                quantityRemaining: qty - 1,
+              });
+            }
+          } catch {
+            /* optional field */
+          }
+        }
       } else if (action.type === 'snooze') {
         await database.updateDocument(config.db, config.col.reminders, action.reminderId, {
           snoozed: true,

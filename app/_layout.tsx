@@ -3,14 +3,15 @@ import { FontSizeProvider } from './_context/fontSizeContext';
 import { AuthProvider } from './_context/authContext';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StatusBar } from 'react-native';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import Toast, { BaseToast, ToastConfig, ToastProps } from 'react-native-toast-message';
 import { NotificationSettingsProvider, useNotificationSettings } from './_context/notificationSettingsContext';
 import { colors } from './_theme/colors';
-import { flushOfflineQueue } from './_utils/reminderActions';
+import { flushOfflineQueue, markTaken, markSnooze } from './_utils/reminderActions';
 import * as Linking from 'expo-linking';
+import * as SystemUI from 'expo-system-ui';
 
 const toastConfig: ToastConfig = {
   snoozed: (props: ToastProps) => (
@@ -91,18 +92,51 @@ function NotificationBootstrap({ children }: { children: React.ReactNode }) {
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       async (response) => {
-        const data = response.notification.request.content.data;
+        const data = response.notification.request.content.data || {};
         const reminderId = data?.reminderId;
         if (!reminderId) return;
+
+        const action = response.actionIdentifier;
+        const medicineId = data?.medicineId ? String(data.medicineId) : undefined;
+        const time = String(data?.time || '');
+
+        // Android / iOS notification action buttons
+        if (action === 'TAKEN' || action === 'taken-action') {
+          try {
+            const result = await markTaken(String(reminderId), medicineId);
+            Toast.show({
+              type: 'success',
+              text1: result.queued ? 'Saved offline' : 'Marked taken',
+            });
+          } catch (e) {
+            console.warn('Taken action failed', e);
+            Toast.show({ type: 'error', text1: 'Could not mark taken' });
+          }
+          return;
+        }
+
+        if (action === 'SNOOZE' || action === 'snooze-action') {
+          try {
+            const result = await markSnooze(String(reminderId), time || '00:00');
+            Toast.show({
+              type: result.queued ? 'snoozed' : 'success',
+              text1: result.queued ? 'Snooze saved offline' : `Snoozed to ${result.time}`,
+            });
+          } catch (e) {
+            console.warn('Snooze action failed', e);
+            Toast.show({ type: 'error', text1: 'Could not snooze' });
+          }
+          return;
+        }
 
         router.push({
           pathname: '/ReminderNotification',
           params: {
             reminderId: String(reminderId),
-            time: String(data?.time || ''),
+            time,
             medicineName: String(data?.medicineName || ''),
             description: String(data?.description || ''),
-            medicineId: data?.medicineId ? String(data.medicineId) : '',
+            medicineId: medicineId || '',
           },
         });
       }
@@ -118,11 +152,24 @@ function NotificationBootstrap({ children }: { children: React.ReactNode }) {
 }
 
 const RootLayout = () => {
+  useEffect(() => {
+    // Android status / nav bar paint — avoid white flash under system UI.
+    if (Platform.OS === 'android') {
+      StatusBar.setBarStyle('dark-content');
+      StatusBar.setBackgroundColor(colors.bg);
+      StatusBar.setTranslucent(false);
+      void SystemUI.setBackgroundColorAsync(colors.bg);
+    }
+  }, []);
+
   return (
     <NotificationSettingsProvider>
       <FontSizeProvider>
         <AuthProvider>
           <NotificationBootstrap>
+            {Platform.OS === 'android' ? (
+              <StatusBar barStyle="dark-content" backgroundColor={colors.bg} translucent={false} />
+            ) : null}
             <Stack>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -156,9 +203,10 @@ async function registerForPushNotificationsAsync() {
   if (Platform.OS === 'web') return;
 
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('myNotificationChannel', {
+    // Keep channel IDs in sync with app.json defaultChannel + reminder payloads.
+    await Notifications.setNotificationChannelAsync('med-reminders', {
       name: 'Medication reminders',
-      importance: Notifications.AndroidImportance.MAX,
+      importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: colors.accent,
     });
@@ -168,12 +216,16 @@ async function registerForPushNotificationsAsync() {
       vibrationPattern: [0, 500, 250, 500],
       lightColor: colors.danger,
     });
-    await Notifications.setNotificationChannelAsync('med-reminders', {
-      name: 'Medication reminders',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: colors.accent,
-    });
+  }
+
+  // Android 13+ needs runtime notification permission (also works on physical devices).
+  try {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    if (existing !== 'granted') {
+      await Notifications.requestPermissionsAsync();
+    }
+  } catch (e) {
+    console.warn('Notification permission error', e);
   }
 
   if (!Device.isDevice) return;

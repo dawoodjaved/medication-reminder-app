@@ -63,13 +63,15 @@ export function docToDoctor(doc: Record<string, unknown>): Doctor {
     lat: asNumber(doc.lat),
     lng: asNumber(doc.lng),
     paymentMethods: payments.length ? payments : ['cash'],
-    languages: asStringArray(doc.languages).length
-      ? asStringArray(doc.languages)
-      : ['Urdu', 'English'],
+    languages: (() => {
+      const langs = asStringArray(doc.languages);
+      return langs.length ? langs : ['Urdu', 'English'];
+    })(),
     availableDays: asStringArray(doc.availableDays),
-    availableSlots: asStringArray(doc.availableSlots).length
-      ? asStringArray(doc.availableSlots)
-      : ['10:00', '11:00', '12:00', '16:00', '17:00', '18:00'],
+    availableSlots: (() => {
+      const slots = asStringArray(doc.availableSlots);
+      return slots.length ? slots : ['10:00', '11:00', '12:00', '16:00', '17:00', '18:00'];
+    })(),
     pmdcHint: String(doc.pmdcHint || doc.pmdcId || 'Unverified'),
     pmdcId: String(doc.pmdcId || '') || undefined,
     about: String(doc.about || ''),

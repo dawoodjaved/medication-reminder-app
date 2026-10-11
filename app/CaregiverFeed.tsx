@@ -15,11 +15,12 @@ import { colors, radii, spacing } from './_theme/colors';
 import {
   ProgressRing,
   MedHintIcon,
-  FadeBlock,
   StatBubble,
   EmptyIllustration,
   PulseDot,
+  FadeBlock,
 } from './_theme/visuals';
+import { LIST_PERF } from './_theme/layout';
 import { database, config } from '../config/appwriteConfig';
 import { Query } from 'appwrite';
 import { useAuth } from './_context/authContext';
@@ -110,6 +111,7 @@ export default function CaregiverFeed() {
       <FlatList
         data={items}
         keyExtractor={(i) => i.$id}
+        {...LIST_PERF}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -127,48 +129,46 @@ export default function CaregiverFeed() {
             <Text style={styles.empty}>No doses</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
+        renderItem={({ item }) => {
           const crit = !!item.medicines?.isCritical;
           return (
-            <FadeBlock delay={Math.min(index * 35, 200)}>
+            <View
+              style={[
+                styles.card,
+                item.taken && styles.cardDone,
+                crit && !item.taken && styles.cardCritical,
+              ]}
+            >
+              <MedHintIcon
+                type={item.medicines?.medicineType}
+                critical={crit && !item.taken}
+                size={44}
+              />
+              <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {item.medicineName}
+                </Text>
+                <Text style={styles.cardMeta}>{item.time}</Text>
+              </View>
               <View
                 style={[
-                  styles.card,
-                  item.taken && styles.cardDone,
-                  crit && !item.taken && styles.cardCritical,
+                  styles.statusOrb,
+                  {
+                    backgroundColor: item.taken
+                      ? colors.success
+                      : item.snoozed
+                        ? colors.warning
+                        : colors.danger,
+                  },
                 ]}
               >
-                <MedHintIcon
-                  type={item.medicines?.medicineType}
-                  critical={crit && !item.taken}
-                  size={44}
+                <Ionicons
+                  name={item.taken ? 'checkmark' : item.snoozed ? 'time' : 'alert'}
+                  size={14}
+                  color={colors.white}
                 />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.medicineName}
-                  </Text>
-                  <Text style={styles.cardMeta}>{item.time}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusOrb,
-                    {
-                      backgroundColor: item.taken
-                        ? colors.success
-                        : item.snoozed
-                          ? colors.warning
-                          : colors.danger,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.taken ? 'checkmark' : item.snoozed ? 'time' : 'alert'}
-                    size={14}
-                    color={colors.white}
-                  />
-                </View>
               </View>
-            </FadeBlock>
+            </View>
           );
         }}
       />

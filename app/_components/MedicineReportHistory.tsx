@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -219,10 +220,13 @@ export default function MedicineReportHistory() {
           <DateTimePicker
             value={new Date(startDate)}
             mode="date"
-            display="default"
-            onChange={(_, d) => {
-              setShowStartPicker(false);
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(event, d) => {
+              // Android fires once then dismisses; ignore cancel/dismissed.
+              if (Platform.OS === 'android') setShowStartPicker(false);
+              if (event.type === 'dismissed') return;
               if (d) setStartDate(formatDateToISO(d));
+              if (Platform.OS === 'ios') setShowStartPicker(false);
             }}
           />
         )}
@@ -230,10 +234,12 @@ export default function MedicineReportHistory() {
           <DateTimePicker
             value={new Date(endDate)}
             mode="date"
-            display="default"
-            onChange={(_, d) => {
-              setShowEndPicker(false);
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(event, d) => {
+              if (Platform.OS === 'android') setShowEndPicker(false);
+              if (event.type === 'dismissed') return;
               if (d) setEndDate(formatDateToISO(d));
+              if (Platform.OS === 'ios') setShowEndPicker(false);
             }}
           />
         )}

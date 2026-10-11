@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,7 +11,8 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../_components/customizableFontElements';
 import { colors, radii, spacing } from '../_theme/colors';
-import { MedHintIcon, FadeBlock, EmptyIllustration, ProgressRing } from '../_theme/visuals';
+import { LIST_PERF, useLayout } from '../_theme/layout';
+import { MedHintIcon, EmptyIllustration, ProgressRing } from '../_theme/visuals';
 import { database, config } from '../../config/appwriteConfig';
 import { Query } from 'appwrite';
 import { useAuth } from '../_context/authContext';
@@ -19,15 +20,55 @@ import { getWeekDates, todayISO } from '../_utils/dates';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+type DayReminder = {
+  $id: string;
+  medicineName: string;
+  time: string;
+  taken?: boolean;
+  medicines?: { medicineType?: string; isCritical?: boolean };
+};
+
+const DayRow = memo(function DayRow({ item }: { item: DayReminder }) {
+  return (
+    <View style={[styles.card, item.taken && styles.cardDone]}>
+      <MedHintIcon
+        type={item.medicines?.medicineType}
+        critical={!!item.medicines?.isCritical}
+        size={42}
+      />
+      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.medicineName}
+        </Text>
+        <Text style={styles.meta}>{item.time}</Text>
+      </View>
+      <View
+        style={[
+          styles.statusOrb,
+          { backgroundColor: item.taken ? colors.success : colors.warning },
+        ]}
+      >
+        <Ionicons
+          name={item.taken ? 'checkmark' : 'time-outline'}
+          size={14}
+          color={colors.white}
+        />
+      </View>
+    </View>
+  );
+});
+
 export default function CalendarScreen() {
   const { scope } = useAuth();
+  const { contentPad, titleSize, listBottom, isCompact } = useLayout();
   const week = useMemo(() => getWeekDates(), []);
   const [selected, setSelected] = useState(todayISO());
   const [loading, setLoading] = useState(true);
-  const [reminders, setReminders] = useState<any[]>([]);
+  const [reminders, setReminders] = useState<DayReminder[]>([]);
   const [dots, setDots] = useState<Record<string, number>>({});
   const [takenMap, setTakenMap] = useState<Record<string, number>>({});
   const patientId = scope?.patientId;
+  const hasDayDataRef = useRef(false);
 
   const loadWeek = useCallback(async () => {
     if (!patientId) {
@@ -63,9 +104,10 @@ export default function CalendarScreen() {
     if (!patientId) {
       setReminders([]);
       setLoading(false);
+      hasDayDataRef.current = false;
       return;
     }
-    setLoading(true);
+    if (!hasDayDataRef.current) setLoading(true);
     try {
       const res = await database.listDocuments(config.db, config.col.reminders, [
         Query.equal('userId', patientId),
@@ -73,7 +115,8 @@ export default function CalendarScreen() {
         Query.orderAsc('time'),
         Query.limit(100),
       ]);
-      setReminders(res.documents);
+      setReminders(res.documents as unknown as DayReminder[]);
+      hasDayDataRef.current = true;
     } catch (e) {
       console.error(e);
     } finally {
@@ -81,12 +124,21 @@ export default function CalendarScreen() {
     }
   }, [patientId, selected]);
 
+  const selectedRef = useRef(selected);
+
   useFocusEffect(
     useCallback(() => {
-      loadWeek();
-      loadDay();
+      void loadWeek();
+      void loadDay();
     }, [loadWeek, loadDay])
   );
+
+  // Refresh when the user taps another day while this tab is already focused.
+  useEffect(() => {
+    if (selectedRef.current === selected) return;
+    selectedRef.current = selected;
+    void loadDay();
+  }, [selected, loadDay]);
 
   const weekPct = useMemo(() => {
     let t = 0;
@@ -98,17 +150,27 @@ export default function CalendarScreen() {
     return t ? Math.round((d / t) * 100) : 0;
   }, [week, dots, takenMap]);
 
+  const renderItem = useCallback(({ item }: { item: DayReminder }) => <DayRow item={item} />, []);
+  const keyExtractor = useCallback((i: DayReminder) => i.$id, []);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+      <View style={[styles.header, { paddingHorizontal: contentPad }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.brand}>WEEK</Text>
-          <Text style={styles.title}>Calendar</Text>
+          <Text style={[styles.title, { fontSize: titleSize }]} numberOfLines={1}>
+            Calendar
+          </Text>
         </View>
-        <ProgressRing progress={weekPct} size={64} stroke={6} label={`${weekPct}%`} />
+        <ProgressRing
+          progress={weekPct}
+          size={isCompact ? 56 : 64}
+          stroke={6}
+          label={`${weekPct}%`}
+        />
       </View>
 
-      <View style={styles.weekRow}>
+      <View style={[styles.weekRow, { paddingHorizontal: Math.max(8, contentPad - 8) }]}>
         {week.map((date, i) => {
           const active = date === selected;
           const isToday = date === todayISO();
@@ -122,7 +184,9 @@ export default function CalendarScreen() {
               onPress={() => setSelected(date)}
             >
               <Text style={[styles.dayLabel, active && styles.dayLabelActive]}>{DAY_LABELS[i]}</Text>
-              <Text style={[styles.dayNum, active && styles.dayLabelActive]}>{date.slice(-2)}</Text>
+              <Text style={[styles.dayNum, isCompact && { fontSize: 13 }, active && styles.dayLabelActive]}>
+                {date.slice(-2)}
+              </Text>
               {!!total && (
                 <View style={styles.miniBarTrack}>
                   <View
@@ -141,48 +205,21 @@ export default function CalendarScreen() {
         })}
       </View>
 
-      {loading ? (
+      {loading && !hasDayDataRef.current ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
       ) : (
         <FlatList
           data={reminders}
-          keyExtractor={(i) => i.$id}
-          contentContainerStyle={{ padding: spacing.lg }}
+          keyExtractor={keyExtractor}
+          {...LIST_PERF}
+          contentContainerStyle={{ paddingHorizontal: contentPad, paddingBottom: listBottom }}
           ListEmptyComponent={
             <View>
               <EmptyIllustration kind="calendar" />
               <Text style={styles.empty}>No doses</Text>
             </View>
           }
-          renderItem={({ item, index }) => (
-            <FadeBlock delay={Math.min(index * 35, 200)}>
-              <View style={[styles.card, item.taken && styles.cardDone]}>
-                <MedHintIcon
-                  type={item.medicines?.medicineType}
-                  critical={!!item.medicines?.isCritical}
-                  size={42}
-                />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {item.medicineName}
-                  </Text>
-                  <Text style={styles.meta}>{item.time}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusOrb,
-                    { backgroundColor: item.taken ? colors.success : colors.warning },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.taken ? 'checkmark' : 'time-outline'}
-                    size={14}
-                    color={colors.white}
-                  />
-                </View>
-              </View>
-            </FadeBlock>
-          )}
+          renderItem={renderItem}
         />
       )}
     </SafeAreaView>
@@ -192,28 +229,28 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.md,
+    gap: 12,
   },
   brand: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
   title: {
-    fontSize: 30,
     fontWeight: '800',
     color: colors.primary,
     letterSpacing: -0.4,
   },
   weekRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
     gap: 4,
   },
   dayCell: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     paddingVertical: 10,
+    paddingHorizontal: 2,
     borderRadius: radii.md,
     backgroundColor: colors.surface,
     borderWidth: 1,

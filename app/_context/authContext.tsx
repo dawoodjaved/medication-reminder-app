@@ -49,9 +49,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setOnboardingDoneState(ob === 'true');
       setBiometricEnabledState(bio === 'true');
 
-      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
       try {
-        await Promise.race([account.get(), timeout.then(() => Promise.reject(new Error('auth timeout')))]);
+        await Promise.race([
+          account.get(),
+          timeout.then(() => Promise.reject(new Error('auth timeout'))),
+        ]);
         if (!cancelled) await refreshScope();
       } catch {
         if (!cancelled) setScope(null);

@@ -105,7 +105,9 @@ export default function EditMedicine() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
+      // Android uses softwareKeyboardLayoutMode=resize — avoid double-adjust with behavior.
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
     >
       <SafeAreaView style={styles.safe}>
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
