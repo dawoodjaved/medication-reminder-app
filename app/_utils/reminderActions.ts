@@ -1,6 +1,7 @@
-import { database, config } from '../../config/appwriteConfig';
+import { account, database, config } from '../../config/appwriteConfig';
 import { addMinutesToTimeString } from './timeConversion';
 import { enqueueAction, peekQueue, setQueue, OfflineAction } from './offlineQueue';
+import { getCachedScope } from './patientScope';
 
 async function isOnline(): Promise<boolean> {
   try {
@@ -15,6 +16,21 @@ async function isOnline(): Promise<boolean> {
   }
 }
 
+/** Block IDOR if someone guesses another user's reminderId */
+async function assertCanMutateReminder(reminderId: string) {
+  const [user, scope, doc] = await Promise.all([
+    account.get(),
+    getCachedScope(),
+    database.getDocument(config.db, config.col.reminders, reminderId),
+  ]);
+  const allowedPatient = scope?.patientId || user.$id;
+  const owner = (doc as any).patientId || (doc as any).userId;
+  if (owner && owner !== allowedPatient && owner !== user.$id) {
+    throw new Error('Not authorized to update this reminder');
+  }
+  return doc;
+}
+
 export async function markTaken(reminderId: string, medicineId?: string) {
   const online = await isOnline();
   if (!online) {
@@ -27,6 +43,7 @@ export async function markTaken(reminderId: string, medicineId?: string) {
     return { queued: true };
   }
 
+  await assertCanMutateReminder(reminderId);
   await database.updateDocument(config.db, config.col.reminders, reminderId, {
     taken: true,
     notificationSend: true,
@@ -63,6 +80,7 @@ export async function markSnooze(reminderId: string, time: string) {
     return { queued: true, time: newTime };
   }
 
+  await assertCanMutateReminder(reminderId);
   await database.updateDocument(config.db, config.col.reminders, reminderId, {
     snoozed: true,
     notificationSend: false,
@@ -85,7 +103,7 @@ export async function flushOfflineQueue() {
 
   for (const action of queue) {
     try {
-      // Apply directly — do not call markTaken/markSnooze or we can re-enqueue mid-flush.
+      await assertCanMutateReminder(action.reminderId);
       if (action.type === 'taken') {
         await database.updateDocument(config.db, config.col.reminders, action.reminderId, {
           taken: true,

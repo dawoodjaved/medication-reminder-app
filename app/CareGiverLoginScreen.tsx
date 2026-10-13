@@ -14,10 +14,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from './_components/customizableFontElements';
 import Toast from 'react-native-toast-message';
-import { ID, Query } from 'appwrite';
+import { ID } from 'appwrite';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { config, database, account } from '../config/appwriteConfig';
+import { account } from '../config/appwriteConfig';
 import { colors, spacing } from './_theme/colors';
 import { screen } from './_theme/styles';
 import { useAuth } from './_context/authContext';
@@ -45,33 +45,19 @@ const CareGiverLoginScreen: React.FC = () => {
 
     setSending(true);
     try {
-      const caregiverList = await database.listDocuments(
-        config.db,
-        config.col.caregivers,
-        [Query.equal('phoneNumber', phoneNumber.trim())]
-      );
-
-      if (caregiverList.total === 0) {
-        Toast.show({
-          type: 'error',
-          text1: 'Not found',
-          text2: 'This phone number is not registered as a caregiver.',
-        });
-        return;
-      }
-
+      // Do not query caregivers before auth (would require guest-readable PII / IDOR).
+      // After OTP, resolvePatientScope checks whether this account is a linked caregiver.
       const token = await account.createPhoneToken(ID.unique(), phoneNumber.trim());
       Toast.show({
         type: 'success',
         text1: 'OTP sent',
-        text2: `Code sent to ${phoneNumber}.`,
+        text2: 'Enter the code from your SMS.',
       });
       router.push({
         pathname: '/OtpVerificationScreen',
         params: { caregiver: 'true', userId: token.userId },
       });
-    } catch (error) {
-      console.error('Phone token error:', error);
+    } catch {
       Toast.show({
         type: 'error',
         text1: 'Phone OTP unavailable',

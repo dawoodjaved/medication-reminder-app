@@ -16,8 +16,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { config, database, account } from '../config/appwriteConfig';
 import { colors, spacing } from './_theme/colors';
 import { screen } from './_theme/styles';
-import { sharedPermissions } from './_utils/patientScope';
-import { createInviteToken, buildInviteShareMessage, buildInviteUrl } from './_utils/invites';
+import { pendingInvitePermissions } from './_utils/patientScope';
+import {
+  createInviteToken,
+  buildInviteShareMessage,
+  buildInviteUrl,
+  inviteExpiresAt,
+} from './_utils/invites';
 
 export default function AddCaregiver() {
   const [email, setEmail] = useState('');
@@ -59,9 +64,13 @@ export default function AddCaregiver() {
       }
 
       const token = createInviteToken();
+      const invitePerms = pendingInvitePermissions(user.$id);
       const caregiverData: Record<string, string> = {
-        phoneNumber: identity,
+        phoneNumber: identity.trim().toLowerCase().includes('@')
+          ? identity.trim().toLowerCase()
+          : identity.trim(),
         invitedAt: new Date().toISOString(),
+        inviteExpiresAt: inviteExpiresAt(),
         patientId: user.$id,
         patientPhone,
         inviteToken: token,
@@ -76,7 +85,7 @@ export default function AddCaregiver() {
           config.col.caregivers,
           ID.unique(),
           caregiverData,
-          sharedPermissions(user.$id)
+          invitePerms
         );
       } catch {
         await database.createDocument(
@@ -84,12 +93,12 @@ export default function AddCaregiver() {
           config.col.caregivers,
           ID.unique(),
           {
-            phoneNumber: identity,
+            phoneNumber: caregiverData.phoneNumber,
             invitedAt: new Date().toISOString(),
             inviteToken: token,
             inviteStatus: 'pending',
           },
-          sharedPermissions(user.$id)
+          invitePerms
         );
       }
 

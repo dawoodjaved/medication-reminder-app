@@ -16,6 +16,8 @@ import { account, database, config } from '../config/appwriteConfig';
 import { colors, spacing } from './_theme/colors';
 import { screen } from './_theme/styles';
 import { useAuth } from './_context/authContext';
+import { acceptedInvitePermissions } from './_utils/patientScope';
+import { isInviteExpired } from './_utils/invites';
 
 /**
  * Accept caregiver invite via deep link `myapp://invite?token=…`
@@ -70,12 +72,30 @@ export default function AcceptInvite() {
       if (doc.inviteStatus === 'accepted' && doc.caregiverUserId && doc.caregiverUserId !== userId) {
         throw new Error('This invite was already accepted by someone else.');
       }
-      await database.updateDocument(config.db, config.col.caregivers, doc.$id, {
-        caregiverUserId: userId,
-        inviteStatus: 'accepted',
-        email: userEmail || doc.email || '',
-        phoneNumber: userEmail || doc.phoneNumber,
-      });
+      if (isInviteExpired(doc.inviteExpiresAt)) {
+        throw new Error('This invite has expired. Ask the patient to send a new one.');
+      }
+      const invitedEmail = String(doc.email || doc.phoneNumber || '')
+        .trim()
+        .toLowerCase();
+      if (invitedEmail.includes('@') && userEmail.trim().toLowerCase() !== invitedEmail) {
+        throw new Error('Sign in with the email this invite was sent to.');
+      }
+
+      const patientId = doc.patientId;
+      await database.updateDocument(
+        config.db,
+        config.col.caregivers,
+        doc.$id,
+        {
+          caregiverUserId: userId,
+          inviteStatus: 'accepted',
+          email: userEmail || doc.email || '',
+          phoneNumber: userEmail || doc.phoneNumber,
+          inviteToken: '', // single-use — prevent replay
+        },
+        patientId ? acceptedInvitePermissions(patientId, userId) : undefined
+      );
     },
     [token]
   );

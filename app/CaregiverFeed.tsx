@@ -44,7 +44,9 @@ export default function CaregiverFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
 
   const load = useCallback(async () => {
-    if (!scope?.patientId) {
+    // Privilege check: only linked caregivers may load another patient's schedule.
+    if (!scope?.patientId || scope.role !== 'caregiver') {
+      setItems([]);
       setLoading(false);
       setRefreshing(false);
       return;
@@ -57,13 +59,13 @@ export default function CaregiverFeed() {
         Query.limit(100),
       ]);
       setItems(res.documents as unknown as FeedItem[]);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [scope?.patientId]);
+  }, [scope?.patientId, scope?.role]);
 
   useFocusEffect(
     useCallback(() => {

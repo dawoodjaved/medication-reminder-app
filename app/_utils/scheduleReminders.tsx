@@ -1,7 +1,7 @@
 import { account, database, config } from '../../config/appwriteConfig';
 import { ID, Permission, Role } from 'appwrite';
 import { addDays, dosesPerDay, formatDateISO } from './dates';
-import { sharedPermissions } from './patientScope';
+import { patientDataPermissions } from './patientScope';
 
 type ScheduleOptions = {
   times: string[];
@@ -36,7 +36,7 @@ export async function scheduleReminders(opts: ScheduleOptions) {
   const user = await account.get();
   const ownerId = patientId || user.$id;
   const validTimes = times.filter(Boolean);
-  const perms = sharedPermissions(ownerId);
+  const perms = await patientDataPermissions(ownerId);
 
   const dates: string[] = [];
   const start = new Date();

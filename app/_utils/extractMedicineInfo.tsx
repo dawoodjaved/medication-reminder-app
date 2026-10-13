@@ -213,7 +213,7 @@ async function parsePrescriptionTextByGrok(text: string) {
     const data = await response.json();
 
     if (!data.choices || !data.choices[0]?.message?.content) {
-      console.error('Groq API response:', JSON.stringify(data, null, 2));
+      // Do not log full API payloads — they can include prompt content / error details.
       throw new Error('Groq response malformed or empty');
     }
 
