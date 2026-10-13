@@ -107,16 +107,60 @@ export default function ScanMedicineScreen() {
         Toast.show({ type: 'error', text1: 'Permission required', text2: 'Allow camera access.' });
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({ quality: 1 });
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 1,
+        base64: true,
+      });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        const uri = result.assets[0].uri;
+        const asset = result.assets[0];
+        const uri = asset.uri;
         setImageUri(uri);
         setLoading(true);
         try {
-          const MLKitOcr = require('react-native-mlkit-ocr').default;
-          const blocks = await MLKitOcr.detectFromFile(uri);
-          const combinedText = blocks.map((b: { text: string }) => b.text).join('\n');
-          await extractDataAndRoute(combinedText);
+          // Prefer on-device OCR in a native/dev-client build; fall back to cloud OCR.
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const MLKitOcr = require('react-native-mlkit-ocr').default;
+            const blocks = await MLKitOcr.detectFromFile(uri);
+            const combinedText = (blocks || [])
+              .map((b: { text: string }) => b.text)
+              .filter(Boolean)
+              .join('\n');
+            if (combinedText.trim()) {
+              await extractDataAndRoute(combinedText);
+              return;
+            }
+          } catch (nativeErr) {
+            console.warn('On-device OCR unavailable, trying cloud OCR', nativeErr);
+          }
+
+          const ocrKey = process.env.EXPO_PUBLIC_OCR_SPACE_KEY;
+          if (!ocrKey || !asset.base64) {
+            Toast.show({
+              type: 'error',
+              text1: 'OCR unavailable',
+              text2: 'Native OCR failed. Set EXPO_PUBLIC_OCR_SPACE_KEY or rebuild with ML Kit.',
+            });
+            setLoading(false);
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append('base64Image', `data:image/jpeg;base64,${asset.base64}`);
+          formData.append('language', 'eng');
+          const res = await fetch('https://api.ocr.space/parse/image', {
+            method: 'POST',
+            headers: { apikey: ocrKey },
+            body: formData,
+          });
+          const data = await res.json();
+          const parsed = data?.ParsedResults?.[0]?.ParsedText || '';
+          if (!parsed.trim()) {
+            Toast.show({ type: 'error', text1: 'OCR failed', text2: 'Could not extract text.' });
+            setLoading(false);
+            return;
+          }
+          await extractDataAndRoute(parsed);
         } catch (err) {
           console.error(err);
           Toast.show({ type: 'error', text1: 'OCR failed', text2: 'Could not extract text.' });

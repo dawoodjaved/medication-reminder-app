@@ -18,7 +18,7 @@ import { screen } from './_theme/styles';
 import { getDoctorById, formatFee } from './_utils/doctorSearch';
 import { database, config } from '../config/appwriteConfig';
 import { useAuth } from './_context/authContext';
-import { sharedPermissions } from './_utils/patientScope';
+import { patientDataPermissions } from './_utils/patientScope';
 import { todayISO, addDays, formatDateISO } from './_utils/dates';
 import { Doctor, PAYMENT_OPTIONS, PaymentMethod } from './_data/pkDoctors';
 
@@ -88,7 +88,7 @@ export default function BookAppointment() {
           notes: notes.trim(),
           paymentMethod,
         },
-        sharedPermissions(scope.patientId)
+        await patientDataPermissions(scope.patientId)
       );
       Toast.show({
         type: 'success',

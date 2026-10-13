@@ -1,11 +1,26 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { account, database, config } from '../../config/appwriteConfig';
 import { Query, ID, Permission, Role } from 'appwrite';
 
 export const registerPushToken = async () => {
+  if (Platform.OS === 'web') return;
   if (!Device.isDevice) return;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('med-reminders', {
+      name: 'Medication reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+    await Notifications.setNotificationChannelAsync('med-critical', {
+      name: 'Critical medication alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500],
+    });
+  }
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
@@ -14,13 +29,17 @@ export const registerPushToken = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  
+
   if (finalStatus !== 'granted') {
     console.warn('Push permission not granted!');
     return;
   }
 
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  if (!projectId) {
+    console.warn('EAS projectId missing — cannot register Expo push token');
+    return;
+  }
 
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
 

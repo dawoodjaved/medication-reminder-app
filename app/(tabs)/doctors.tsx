@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,7 +14,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../_components/customizableFontElements';
 import { colors, radii, spacing } from '../_theme/colors';
-import { FadeBlock, EmptyIllustration } from '../_theme/visuals';
+import { LIST_PERF, useLayout } from '../_theme/layout';
+import { EmptyIllustration } from '../_theme/visuals';
 import { DoctorAvatar } from '../_components/DoctorAvatar';
 import {
   ALL_DISEASES,
@@ -27,48 +28,97 @@ import {
 } from '../_data/pkDoctors';
 import { searchDoctorsRemote, formatFee, DoctorFilters } from '../_utils/doctorSearch';
 
+const DoctorRow = memo(function DoctorRow({
+  item,
+  onPress,
+}: {
+  item: Doctor;
+  onPress: (id: string) => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => onPress(item.id)}
+      activeOpacity={0.85}
+    >
+      <DoctorAvatar photoUrl={item.photoUrl} initials={item.photo} size={48} />
+      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {item.specialization}
+        </Text>
+        <View style={styles.rowMeta}>
+          <Text style={styles.fee}>{formatFee(item.feePkr)}</Text>
+          <View style={styles.ratingPill}>
+            <Ionicons name="star" size={11} color={colors.warning} />
+            <Text style={styles.rating}>{item.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+});
+
+const emptyFilters = (): DoctorFilters => ({
+  query: '',
+  disease: '',
+  city: '',
+  specialization: '',
+  hospital: '',
+  payment: '',
+  maxFee: null,
+  minRating: null,
+  gender: '',
+});
+
 export default function DoctorsScreen() {
   const router = useRouter();
-  const [filters, setFilters] = useState<DoctorFilters>({
-    query: '',
-    disease: '',
-    city: '',
-    specialization: '',
-    hospital: '',
-    payment: '',
-    maxFee: null,
-    minRating: null,
-    gender: '',
-  });
+  const { contentPad, titleSize, listBottom, isCompact } = useLayout();
+  const [filters, setFilters] = useState<DoctorFilters>(emptyFilters);
+  const [queryDraft, setQueryDraft] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [diseaseSuggest, setDiseaseSuggest] = useState('');
   const [results, setResults] = useState<Doctor[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const hasResultsRef = useRef(false);
+  const requestIdRef = useRef(0);
+
+  // Debounce free-text search separately so chip taps stay snappy.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setFilters((f) => (f.query === queryDraft ? f : { ...f, query: queryDraft }));
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [queryDraft]);
 
   useEffect(() => {
     let cancelled = false;
+    const id = ++requestIdRef.current;
+    const delay = filters.query || filters.disease ? 220 : 0;
     const handle = setTimeout(async () => {
-      setLoading(true);
+      if (!hasResultsRef.current) setLoading(true);
       setError('');
       try {
         const { doctors, total: t } = await searchDoctorsRemote(filters);
-        if (!cancelled) {
-          setResults(doctors);
-          setTotal(t);
-        }
+        if (cancelled || id !== requestIdRef.current) return;
+        setResults(doctors);
+        setTotal(t);
+        hasResultsRef.current = true;
       } catch (e) {
         console.error(e);
-        if (!cancelled) {
-          setResults([]);
-          setTotal(0);
-          setError('Could not load doctors. Check Appwrite `doctors` collection.');
-        }
+        if (cancelled || id !== requestIdRef.current) return;
+        setResults([]);
+        setTotal(0);
+        setError('Could not load doctors. Check Appwrite `doctors` collection.');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && id === requestIdRef.current) setLoading(false);
       }
-    }, 280);
+    }, delay);
     return () => {
       cancelled = true;
       clearTimeout(handle);
@@ -81,46 +131,79 @@ export default function DoctorsScreen() {
     return ALL_DISEASES.filter((d) => d.includes(q)).slice(0, 10);
   }, [diseaseSuggest]);
 
-  const set = (patch: Partial<DoctorFilters>) => setFilters((f) => ({ ...f, ...patch }));
+  const set = useCallback((patch: Partial<DoctorFilters>) => {
+    setFilters((f) => ({ ...f, ...patch }));
+  }, []);
+
+  const openDoctor = useCallback(
+    (id: string) => {
+      router.push({ pathname: '/DoctorDetail', params: { id } });
+    },
+    [router]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Doctor }) => <DoctorRow item={item} onPress={openDoctor} />,
+    [openDoctor]
+  );
+
+  const keyExtractor = useCallback((i: Doctor) => i.id, []);
+
+  const diseaseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDiseaseChange = useCallback((t: string) => {
+    setDiseaseSuggest(t);
+    if (diseaseDebounceRef.current) clearTimeout(diseaseDebounceRef.current);
+    diseaseDebounceRef.current = setTimeout(() => {
+      setFilters((f) => ({ ...f, disease: t }));
+    }, 320);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <View>
+      <View style={[styles.header, { paddingHorizontal: contentPad }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.brand}>PAKISTAN</Text>
-          <Text style={styles.title}>Doctors</Text>
+          <Text style={[styles.title, { fontSize: titleSize }]} numberOfLines={1}>
+            Doctors
+          </Text>
         </View>
         <TouchableOpacity style={styles.apptBtn} onPress={() => router.push('/MyAppointments')}>
           <Ionicons name="calendar-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchRow}>
+      <View style={[styles.searchRow, { marginHorizontal: contentPad }]}>
         <Ionicons name="search" size={18} color={colors.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search name, hospital, disease…"
+          placeholder={isCompact ? 'Name, hospital…' : 'Search name, hospital, disease…'}
           placeholderTextColor={colors.textMuted}
-          value={filters.query}
-          onChangeText={(query) => set({ query })}
+          value={queryDraft}
+          onChangeText={setQueryDraft}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
         <TouchableOpacity style={styles.filterBtn} onPress={() => setShowFilters(true)}>
           <Ionicons name="options-outline" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.label}>Search by disease</Text>
+      <Text style={[styles.label, { marginHorizontal: contentPad }]}>Search by disease</Text>
       <TextInput
-        style={styles.diseaseInput}
+        style={[styles.diseaseInput, { marginHorizontal: contentPad }]}
         placeholder="e.g. diabetes, asthma, pregnancy care"
         placeholderTextColor={colors.textMuted}
         value={diseaseSuggest || filters.disease}
-        onChangeText={(t) => {
-          setDiseaseSuggest(t);
-          set({ disease: t });
-        }}
+        onChangeText={onDiseaseChange}
+        autoCorrect={false}
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chips}
+        contentContainerStyle={{ paddingHorizontal: contentPad }}
+      >
         {diseaseSuggestions.map((d) => (
           <TouchableOpacity
             key={d}
@@ -137,7 +220,12 @@ export default function DoctorsScreen() {
         ))}
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chips}
+        contentContainerStyle={{ paddingHorizontal: contentPad }}
+      >
         <TouchableOpacity
           style={[styles.chip, !filters.city && styles.chipActive]}
           onPress={() => set({ city: '' })}
@@ -155,23 +243,30 @@ export default function DoctorsScreen() {
         ))}
       </ScrollView>
 
-      <View style={styles.countRow}>
+      <View style={[styles.countRow, { marginHorizontal: contentPad }]}>
         <View style={styles.countOrb}>
-          <Text style={styles.countNum}>{loading ? '…' : results.length}</Text>
+          <Text style={styles.countNum}>{loading && !hasResultsRef.current ? '…' : results.length}</Text>
         </View>
         {!loading && total > results.length ? (
           <Text style={styles.countHint}>of {total}</Text>
         ) : null}
+        {loading && hasResultsRef.current ? (
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
+        ) : null}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text style={[styles.error, { paddingHorizontal: contentPad }]}>{error}</Text> : null}
 
       <FlatList
         data={results}
-        keyExtractor={(i) => i.id}
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}
+        keyExtractor={keyExtractor}
+        {...LIST_PERF}
+        contentContainerStyle={{
+          paddingHorizontal: contentPad,
+          paddingBottom: listBottom,
+        }}
         ListEmptyComponent={
-          loading ? (
+          loading && !hasResultsRef.current ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
           ) : (
             <View>
@@ -180,43 +275,15 @@ export default function DoctorsScreen() {
             </View>
           )
         }
-        renderItem={({ item, index }) => (
-          <FadeBlock delay={Math.min(index * 28, 200)}>
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() =>
-                router.push({ pathname: '/DoctorDetail', params: { id: item.id } })
-              }
-              activeOpacity={0.85}
-            >
-              <DoctorAvatar photoUrl={item.photoUrl} initials={item.photo} size={48} />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.meta} numberOfLines={1}>
-                  {item.specialization}
-                </Text>
-                <View style={styles.rowMeta}>
-                  <Text style={styles.fee}>{formatFee(item.feePkr)}</Text>
-                  <View style={styles.ratingPill}>
-                    <Ionicons name="star" size={11} color={colors.warning} />
-                    <Text style={styles.rating}>{item.rating.toFixed(1)}</Text>
-                  </View>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-          </FadeBlock>
-        )}
+        renderItem={renderItem}
       />
 
       <Modal visible={showFilters} animationType="slide" transparent>
         <View style={styles.modalWrap}>
-          <View style={styles.modal}>
+          <View style={[styles.modal, { maxHeight: isCompact ? '90%' : '85%' }]}>
             <Text style={styles.modalTitle}>Filters</Text>
             <ScrollView>
-              <Text style={styles.label}>Specialization</Text>
+              <Text style={styles.labelInline}>Specialization</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <TouchableOpacity
                   style={[styles.chip, !filters.specialization && styles.chipActive]}
@@ -244,7 +311,7 @@ export default function DoctorsScreen() {
                 ))}
               </ScrollView>
 
-              <Text style={styles.label}>Hospital</Text>
+              <Text style={styles.labelInline}>Hospital</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <TouchableOpacity
                   style={[styles.chip, !filters.hospital && styles.chipActive]}
@@ -261,7 +328,10 @@ export default function DoctorsScreen() {
                     onPress={() => set({ hospital: h })}
                   >
                     <Text
-                      style={[styles.chipText, filters.hospital === h && styles.chipTextActive]}
+                      style={[
+                        styles.chipText,
+                        filters.hospital === h && styles.chipTextActive,
+                      ]}
                     >
                       {h}
                     </Text>
@@ -269,7 +339,7 @@ export default function DoctorsScreen() {
                 ))}
               </ScrollView>
 
-              <Text style={styles.label}>Payment</Text>
+              <Text style={styles.labelInline}>Payment</Text>
               <View style={styles.wrapChips}>
                 {PAYMENT_OPTIONS.map((p) => (
                   <TouchableOpacity
@@ -293,7 +363,7 @@ export default function DoctorsScreen() {
                 ))}
               </View>
 
-              <Text style={styles.label}>Max fee (PKR)</Text>
+              <Text style={styles.labelInline}>Max fee (PKR)</Text>
               <View style={styles.wrapChips}>
                 {[null, 2000, 3000, 4000, 5000].map((fee) => (
                   <TouchableOpacity
@@ -313,7 +383,7 @@ export default function DoctorsScreen() {
                 ))}
               </View>
 
-              <Text style={styles.label}>Min rating</Text>
+              <Text style={styles.labelInline}>Min rating</Text>
               <View style={styles.wrapChips}>
                 {[null, 4.0, 4.5, 4.7].map((r) => (
                   <TouchableOpacity
@@ -333,7 +403,7 @@ export default function DoctorsScreen() {
                 ))}
               </View>
 
-              <Text style={styles.label}>Gender</Text>
+              <Text style={styles.labelInline}>Gender</Text>
               <View style={styles.wrapChips}>
                 {(
                   [
@@ -357,27 +427,15 @@ export default function DoctorsScreen() {
               </View>
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.applyBtn}
-              onPress={() => setShowFilters(false)}
-            >
+            <TouchableOpacity style={styles.applyBtn} onPress={() => setShowFilters(false)}>
               <Text style={styles.applyText}>
                 Show {loading ? '…' : results.length} doctors
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
-                setFilters({
-                  query: '',
-                  disease: '',
-                  city: '',
-                  specialization: '',
-                  hospital: '',
-                  payment: '',
-                  maxFee: null,
-                  minRating: null,
-                  gender: '',
-                });
+                setFilters(emptyFilters());
+                setQueryDraft('');
                 setDiseaseSuggest('');
               }}
             >
@@ -393,14 +451,14 @@ export default function DoctorsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
-    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
   },
   brand: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.6 },
-  title: { fontSize: 30, fontWeight: '800', color: colors.primary, letterSpacing: -0.4 },
+  title: { fontWeight: '800', color: colors.primary, letterSpacing: -0.4 },
   apptBtn: {
     width: 44,
     height: 44,
@@ -411,7 +469,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  countRow: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
+  countRow: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   countOrb: {
     width: 32,
     height: 32,
@@ -425,7 +487,6 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
     textAlign: 'center',
-    paddingHorizontal: spacing.lg,
     marginBottom: 8,
     fontSize: 13,
   },
@@ -441,7 +502,6 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radii.md,
@@ -450,21 +510,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  searchInput: { flex: 1, paddingVertical: 12, color: colors.text },
+  searchInput: { flex: 1, paddingVertical: 12, color: colors.text, minWidth: 0 },
   filterBtn: {
     backgroundColor: colors.primary,
     padding: 8,
     borderRadius: 8,
   },
   label: {
-    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: 6,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  labelInline: {
     marginTop: spacing.md,
     marginBottom: 6,
     fontWeight: '600',
     color: colors.text,
   },
   diseaseInput: {
-    marginHorizontal: spacing.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -473,7 +537,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: colors.text,
   },
-  chips: { paddingHorizontal: spacing.lg, marginTop: 8, maxHeight: 40 },
+  chips: { marginTop: 8, maxHeight: 40 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -486,12 +550,6 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   chipTextActive: { color: colors.white },
-  count: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    color: colors.textMuted,
-    fontSize: 13,
-  },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 40 },
   card: {
     flexDirection: 'row',
@@ -502,23 +560,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 12,
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.white, fontWeight: '800' },
   name: { fontWeight: '700', color: colors.text, fontSize: 16 },
   meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  rowMeta: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  rowMeta: { flexDirection: 'row', gap: 10, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' },
   fee: { color: colors.accent, fontWeight: '700', fontSize: 13 },
   rating: { color: colors.warning, fontWeight: '700', fontSize: 13 },
-  exp: { color: colors.textMuted, fontSize: 12 },
   modalWrap: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -528,7 +575,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '85%',
     padding: spacing.lg,
     paddingBottom: 32,
   },

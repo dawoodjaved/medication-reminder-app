@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JSONL = Path(os.environ.get("DOCTORS_JSONL", ROOT / "assets" / "pakistan_doctors_clean.jsonl"))
 
 ENDPOINT = os.environ.get("APPWRITE_ENDPOINT", "https://fra.cloud.appwrite.io/v1").rstrip("/")
-PROJECT = os.environ.get("APPWRITE_PROJECT_ID", "6abac4d80027b9f5ed92")
+PROJECT = os.environ.get("APPWRITE_PROJECT_ID", "").strip()
 DATABASE = os.environ.get("APPWRITE_DATABASE_ID", "medrem_db")
 COLLECTION = os.environ.get("APPWRITE_DOCTORS_COLLECTION", "doctors")
 API_KEY = os.environ.get("APPWRITE_API_KEY", "").strip()
@@ -50,6 +50,11 @@ def headers() -> dict:
             "Missing APPWRITE_API_KEY.\n"
             "Create a key in Appwrite Console → Overview → API Keys "
             "(scopes: databases.read, databases.write) and export it."
+        )
+    if not PROJECT:
+        raise SystemExit(
+            "Missing APPWRITE_PROJECT_ID.\n"
+            "Export APPWRITE_PROJECT_ID from your Appwrite project settings."
         )
     return {
         "Content-Type": "application/json",

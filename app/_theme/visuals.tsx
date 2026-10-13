@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import React, { memo, useEffect } from 'react';
+import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import Svg, { Circle, Path, G } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -95,8 +95,8 @@ const ringStyles = StyleSheet.create({
   sub: { fontSize: 10, color: colors.textMuted, fontWeight: '600', marginTop: 1 },
 });
 
-/** Soft decorative orbs */
-export function SoftOrbs({ style }: { style?: ViewStyle }) {
+/** Soft decorative orbs — static (no JS animation cost). */
+export const SoftOrbs = memo(function SoftOrbs({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[orbStyles.wrap, style]} pointerEvents="none">
       <View style={[orbStyles.orb, orbStyles.a]} />
@@ -104,7 +104,7 @@ export function SoftOrbs({ style }: { style?: ViewStyle }) {
       <View style={[orbStyles.orb, orbStyles.c]} />
     </View>
   );
-}
+});
 
 const orbStyles = StyleSheet.create({
   wrap: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
@@ -175,7 +175,7 @@ export function HeartPulseGlyph({ size = 22, color = colors.accent }: { size?: n
 }
 
 /** Leading icon hint for medicine / dose rows */
-export function MedHintIcon({
+export const MedHintIcon = memo(function MedHintIcon({
   type,
   critical,
   size = 44,
@@ -220,7 +220,7 @@ export function MedHintIcon({
       {child}
     </View>
   );
-}
+});
 
 export function DoctorHintIcon({ specialty, size = 48 }: { specialty?: string; size?: number }) {
   const s = (specialty || '').toLowerCase();
@@ -255,13 +255,19 @@ export function FadeBlock({
   children,
   delay = 0,
   style,
+  animate = true,
 }: {
   children: React.ReactNode;
   delay?: number;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  /** Set false for FlatList rows — entering animations thrash Android scroll. */
+  animate?: boolean;
 }) {
+  if (!animate) {
+    return <View style={style}>{children}</View>;
+  }
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify().damping(16)} style={style}>
+    <Animated.View entering={FadeInDown.delay(delay).duration(280)} style={style}>
       {children}
     </Animated.View>
   );
@@ -314,14 +320,36 @@ const statStyles = StyleSheet.create({
   label: { fontSize: 11, color: colors.textMuted, marginTop: 2, fontWeight: '600' },
 });
 
-export function ProgressBar({
+function StaticProgressBar({
   progress,
-  height = 8,
-  color = colors.accent,
+  height,
+  color,
 }: {
   progress: number;
-  height?: number;
-  color?: string;
+  height: number;
+  color: string;
+}) {
+  const pct = Math.max(0, Math.min(100, progress || 0));
+  return (
+    <View style={[barStyles.track, { height, borderRadius: height }]}>
+      <View
+        style={[
+          barStyles.fill,
+          { height, borderRadius: height, backgroundColor: color, width: `${pct}%` },
+        ]}
+      />
+    </View>
+  );
+}
+
+function AnimatedProgressBar({
+  progress,
+  height,
+  color,
+}: {
+  progress: number;
+  height: number;
+  color: string;
 }) {
   const pct = Math.max(0, Math.min(100, progress || 0));
   const w = useSharedValue(0);
@@ -335,9 +363,29 @@ export function ProgressBar({
 
   return (
     <View style={[barStyles.track, { height, borderRadius: height }]}>
-      <Animated.View style={[barStyles.fill, { height, borderRadius: height, backgroundColor: color }, fillStyle]} />
+      <Animated.View
+        style={[barStyles.fill, { height, borderRadius: height, backgroundColor: color }, fillStyle]}
+      />
     </View>
   );
+}
+
+export function ProgressBar({
+  progress,
+  height = 8,
+  color = colors.accent,
+  animated = true,
+}: {
+  progress: number;
+  height?: number;
+  color?: string;
+  /** Prefer false inside FlatList rows to avoid per-row Reanimated work. */
+  animated?: boolean;
+}) {
+  if (!animated) {
+    return <StaticProgressBar progress={progress} height={height} color={color} />;
+  }
+  return <AnimatedProgressBar progress={progress} height={height} color={color} />;
 }
 
 const barStyles = StyleSheet.create({
@@ -385,8 +433,20 @@ const emptyStyles = StyleSheet.create({
   },
 });
 
-/** Pulsing attention orb for overdue / critical */
-export function PulseDot({ color = colors.danger, size = 10 }: { color?: string; size?: number }) {
+function StaticPulseDot({ color, size }: { color: string; size: number }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+      }}
+    />
+  );
+}
+
+function AnimatedPulseDot({ color, size }: { color: string; size: number }) {
   const s = useSharedValue(1);
   useEffect(() => {
     s.value = withRepeat(
@@ -400,7 +460,14 @@ export function PulseDot({ color = colors.danger, size = 10 }: { color?: string;
     opacity: 2 - s.value,
   }));
   return (
-    <View style={{ width: size * 1.6, height: size * 1.6, alignItems: 'center', justifyContent: 'center' }}>
+    <View
+      style={{
+        width: size * 1.6,
+        height: size * 1.6,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       <Animated.View
         style={[
           {
@@ -424,4 +491,19 @@ export function PulseDot({ color = colors.danger, size = 10 }: { color?: string;
       />
     </View>
   );
+}
+
+/** Pulsing attention orb for overdue / critical */
+export function PulseDot({
+  color = colors.danger,
+  size = 10,
+  animated = true,
+}: {
+  color?: string;
+  size?: number;
+  /** Prefer false in long lists — infinite loops burn JS/UI threads. */
+  animated?: boolean;
+}) {
+  if (!animated) return <StaticPulseDot color={color} size={size} />;
+  return <AnimatedPulseDot color={color} size={size} />;
 }

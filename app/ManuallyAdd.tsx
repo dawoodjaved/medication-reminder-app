@@ -24,7 +24,7 @@ import { config, database, account } from '../config/appwriteConfig';
 import { colors, radii, spacing } from './_theme/colors';
 import { screen } from './_theme/styles';
 import { useAuth } from './_context/authContext';
-import { sharedPermissions } from './_utils/patientScope';
+import { patientDataPermissions } from './_utils/patientScope';
 import { dosesPerDay } from './_utils/dates';
 
 type MedicationData = {
@@ -152,6 +152,7 @@ const ManuallyAdd: React.FC = () => {
         instructions: form.instructions || '',
       };
 
+      const medPerms = await patientDataPermissions(patientId);
       let medicineDoc;
       try {
         medicineDoc = await database.createDocument(
@@ -159,7 +160,7 @@ const ManuallyAdd: React.FC = () => {
           config.col.medicines,
           ID.unique(),
           documentData,
-          sharedPermissions(patientId)
+          medPerms
         );
       } catch {
         // Fallback without optional attrs if Console schema not updated yet
@@ -176,7 +177,7 @@ const ManuallyAdd: React.FC = () => {
           config.col.medicines,
           ID.unique(),
           basic,
-          sharedPermissions(patientId)
+          medPerms
         );
       }
 
@@ -220,7 +221,12 @@ const ManuallyAdd: React.FC = () => {
     : ['Once a day', 'Twice a day', 'Three times a day', 'Everyday', 'Weekly'];
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      // Android uses softwareKeyboardLayoutMode=resize — avoid double-adjust with behavior.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <SafeAreaView style={styles.safe}>
           <TouchableOpacity style={styles.back} onPress={() => router.back()}>

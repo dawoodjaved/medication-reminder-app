@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Image, StyleSheet, ViewStyle } from 'react-native';
+import React, { memo, useState } from 'react';
+import { View, Image, StyleSheet, ViewStyle, Platform } from 'react-native';
 import { Text } from './customizableFontElements';
 import { colors } from '../_theme/colors';
 
@@ -11,7 +11,12 @@ type Props = {
 };
 
 /** Doctor avatar: remote photo when available, else initials chip. */
-export function DoctorAvatar({ photoUrl, initials = 'DR', size = 48, style }: Props) {
+export const DoctorAvatar = memo(function DoctorAvatar({
+  photoUrl,
+  initials = 'DR',
+  size = 48,
+  style,
+}: Props) {
   const [failed, setFailed] = useState(false);
   const showImage = Boolean(photoUrl) && !failed;
   const radius = size / 2;
@@ -28,6 +33,8 @@ export function DoctorAvatar({ photoUrl, initials = 'DR', size = 48, style }: Pr
         <Image
           source={{ uri: photoUrl }}
           style={{ width: size, height: size, borderRadius: radius }}
+          resizeMode="cover"
+          {...(Platform.OS === 'android' ? { fadeDuration: 0 } : null)}
           onError={() => setFailed(true)}
         />
       ) : (
@@ -37,7 +44,7 @@ export function DoctorAvatar({ photoUrl, initials = 'DR', size = 48, style }: Pr
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

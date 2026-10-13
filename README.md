@@ -32,3 +32,10 @@ npx expo start
 ```
 
 Fill in `.env` with your keys (never commit real secrets). Scan the QR code with Expo Go, or press `w` for web.
+
+## Security notes (secrets)
+
+- `.env` is gitignored. Use `.env.example` as a placeholder-only template.
+- `EXPO_PUBLIC_*` keys (Groq, OCR.space) are **embedded in the client binary** — use rate-limited keys.
+- Never put `APPWRITE_API_KEY` in the app or any `EXPO_PUBLIC_*` variable (scripts / Appwrite Functions only).
+- If any secret was previously hardcoded or committed, **rotate it immediately** in the provider console.

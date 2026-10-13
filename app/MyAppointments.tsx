@@ -15,7 +15,8 @@ import Toast from 'react-native-toast-message';
 import { Query } from 'appwrite';
 import { Text } from './_components/customizableFontElements';
 import { colors, radii, spacing } from './_theme/colors';
-import { DoctorHintIcon, EmptyIllustration, FadeBlock } from './_theme/visuals';
+import { DoctorHintIcon, EmptyIllustration } from './_theme/visuals';
+import { LIST_PERF } from './_theme/layout';
 import { database, config } from '../config/appwriteConfig';
 import { useAuth } from './_context/authContext';
 
@@ -114,6 +115,7 @@ export default function MyAppointments() {
       <FlatList
         data={items}
         keyExtractor={(i) => i.$id}
+        {...LIST_PERF}
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
@@ -131,32 +133,30 @@ export default function MyAppointments() {
             <Text style={styles.empty}>No appointments</Text>
           </View>
         }
-        renderItem={({ item, index }) => {
+        renderItem={({ item }) => {
           const cancelled = item.status === 'cancelled';
           return (
-            <FadeBlock delay={Math.min(index * 30, 180)}>
-              <View style={[styles.card, cancelled && { opacity: 0.5 }]}>
-                <DoctorHintIcon specialty={item.specialization} size={48} />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {item.doctorName}
-                  </Text>
-                  <Text style={styles.meta} numberOfLines={1}>
-                    {item.specialization}
-                  </Text>
-                  <Text style={styles.when}>
-                    {item.date} · {item.time}
-                  </Text>
-                </View>
-                {!cancelled ? (
-                  <TouchableOpacity style={styles.cancelOrb} onPress={() => cancel(item)}>
-                    <Ionicons name="close" size={16} color={colors.danger} />
-                  </TouchableOpacity>
-                ) : (
-                  <Ionicons name="ban-outline" size={18} color={colors.textMuted} />
-                )}
+            <View style={[styles.card, cancelled && { opacity: 0.5 }]}>
+              <DoctorHintIcon specialty={item.specialization} size={48} />
+              <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {item.doctorName}
+                </Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {item.specialization}
+                </Text>
+                <Text style={styles.when}>
+                  {item.date} · {item.time}
+                </Text>
               </View>
-            </FadeBlock>
+              {!cancelled ? (
+                <TouchableOpacity style={styles.cancelOrb} onPress={() => cancel(item)}>
+                  <Ionicons name="close" size={16} color={colors.danger} />
+                </TouchableOpacity>
+              ) : (
+                <Ionicons name="ban-outline" size={18} color={colors.textMuted} />
+              )}
+            </View>
           );
         }}
       />

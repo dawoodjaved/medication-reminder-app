@@ -18,7 +18,7 @@ import { screen } from './_theme/styles';
 import { SoftOrbs, HeartPulseGlyph, FadeBlock } from './_theme/visuals';
 import { useAuth } from './_context/authContext';
 import { todayISO } from './_utils/dates';
-import { sharedPermissions } from './_utils/patientScope';
+import { patientDataPermissions } from './_utils/patientScope';
 
 const SEVERITIES = [
   { id: 'mild' as const, icon: 'happy-outline' as const, color: colors.success },
@@ -63,7 +63,7 @@ export default function LogSymptom() {
         config.col.symptoms,
         ID.unique(),
         data,
-        sharedPermissions(scope.patientId)
+        await patientDataPermissions(scope.patientId)
       );
       Toast.show({ type: 'success', text1: 'Logged' });
       router.back();

@@ -100,26 +100,23 @@ module.exports = async function (req, res) {
               body: JSON.stringify({ ...message, to: pushToken }),
             });
 
-            const responseJson = await response.json();
+            await response.json().catch(() => ({}));
+            // Never echo push tokens or Expo payloads in the HTTP response.
             pushResults.push({
-              to: pushToken,
               userId,
               reminderId: reminder.$id,
               status: response.status,
-              expoResponse: responseJson,
             });
 
             await db.updateDocument(databaseId, remindersCol, reminder.$id, {
               notificationSend: true,
             });
           } catch (pushErr) {
-            error(`Failed push for ${userId}:`, pushErr.message);
+            error(`Failed push for user:`, pushErr.message);
             pushResults.push({
-              to: pushToken,
               userId,
               reminderId: reminder.$id,
               status: "error",
-              error: pushErr.message,
             });
           }
         }
@@ -161,7 +158,6 @@ module.exports = async function (req, res) {
       body: JSON.stringify({
         success: true,
         totalSent: pushResults.length,
-        results: pushResults,
       }),
     };
   } catch (err) {
@@ -169,7 +165,7 @@ module.exports = async function (req, res) {
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ success: false, error: err.message }),
+      body: JSON.stringify({ success: false, error: "Internal error" }),
     };
   }
 };
